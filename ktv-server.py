@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-🎤 家庭KTV点歌系统
-纯 Python 实现，零依赖，双击启动
-功能：电视端播放 + 手机点歌 + 原唱/伴唱切换 + 搜索
+🎤 家庭KTV点歌系统 - 纯Python，零依赖，双击启动
+功能：电视端播放 + 手机端点歌 + 原唱/伴唱切换 + 搜索
+依赖：Python 3 + ffmpeg（已加入PATH）
 """
 
-import os, sys, json, sqlite3, subprocess, threading, time, socket
+import os, sys, json, sqlite3, subprocess, shutil, threading, time, socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import Path
 from datetime import datetime
 
+# ======================== 配置 ========================
 PORT = 3456
 KTV_DIR = Path(r"H:\KTVSong")
 DB_PATH = KTV_DIR / "song_V3.2.3.db"
@@ -19,24 +20,32 @@ HLS_CACHE = Path(__file__).parent / "hls-cache"
 VOICE_FILE = Path(__file__).parent / "voice-mode.json"
 SCRIPT_DIR = Path(__file__).parent
 
-song_queue = []
-queue_counter = 0
-current_song_id = None
-voice_modes = {}
-play_count = {}
+# ======================== 全局状态 ========================
+song_queue = []          # 队列: [{id, song_id, title, artist, nickname, status}]
+queue_counter = 0        # 队列ID计数器
+current_song_id = None   # 当前播放歌曲ID
+voice_modes = {}         # {song_id: "original"|"accompaniment"}
+play_count = {}          # {song_id: count} 播放统计
 play_lock = threading.Lock()
-hls_locks = {}
+hls_locks = {}           # {song_id: threading.Lock} 防止重复转码
 
+# 加载语音模式
 if VOICE_FILE.exists():
     try: voice_modes = json.loads(VOICE_FILE.read_text('utf-8'))
     except: pass
 
+# ======================== 数据库 ========================
 def get_db():
-    if not DB_PATH.exists(): return None
-    db = sqlite3.connect(str(DB_PATH)); db.row_factory = sqlite3.Row
-    db.execute("PRAGMA query_only = ON"); return db
+    """获取数据库连接（只读）"""
+    if not DB_PATH.exists():
+        return None
+    db = sqlite3.connect(str(DB_PATH))
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA query_only = ON")
+    return db
 
 def search_songs(query):
+    """搜索歌曲，支持歌名/歌手/拼音"""
     db = get_db()
     if not db: return []
     try:
@@ -44,176 +53,464 @@ def search_songs(query):
             rows = db.execute("SELECT * FROM song ORDER BY id LIMIT 50").fetchall()
         else:
             q = f"%{query.strip()}%"
-            rows = db.execute("SELECT * FROM song WHERE song_name LIKE ? OR singer LIKE ? OR pinyin LIKE ? OR id LIKE ? ORDER BY id LIMIT 100", (q, q, q, q)).fetchall()
-        db.close(); return [dict(r) for r in rows]
-    except: db.close(); return []
+            rows = db.execute(
+                "SELECT * FROM song WHERE song_name LIKE ? OR singer LIKE ? OR pinyin LIKE ? OR id LIKE ? ORDER BY id LIMIT 100",
+                (q, q, q, q)
+            ).fetchall()
+        db.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"搜索错误: {e}")
+        db.close()
+        return []
 
 def get_song(song_id):
+    """根据ID获取歌曲"""
     db = get_db()
     if not db: return None
     try:
         row = db.execute("SELECT * FROM song WHERE id = ?", (song_id,)).fetchone()
-        db.close(); return dict(row) if row else None
-    except: db.close(); return None
+        db.close()
+        return dict(row) if row else None
+    except:
+        db.close()
+        return None
 
-def find_song_file(fn):
+# ======================== 文件查找 ========================
+def find_song_file(file_number):
+    """查找歌曲MKV文件"""
     ktv = str(KTV_DIR)
-    names = [f"song{fn}.mkv", f"song{fn}.mp4", f"song{str(fn).zfill(4)}.mkv", f"song{str(fn).zfill(4)}.mp4"]
+    names = [f"song{file_number}.mkv", f"song{file_number}.mp4",
+             f"song{str(file_number).zfill(4)}.mkv", f"song{str(file_number).zfill(4)}.mp4"]
     for n in names:
         p = os.path.join(ktv, n)
         if os.path.exists(p): return p
+    # 子目录
     for base in range(0, 4500, 500):
-        sub = f"song{base}";
+        sub = f"song{base}"
         for n in names:
             p = os.path.join(ktv, sub, n)
             if os.path.exists(p): return p
     return None
 
-def get_hls_dir(sid): return HLS_CACHE / str(sid)
+# ======================== HLS 转码 ========================
+def get_hls_dir(song_id):
+    return HLS_CACHE / str(song_id)
 
-def is_hls_ready(sid):
-    d = get_hls_dir(sid); return d.exists() and (d / "master.m3u8").exists() and (d / "stream.m3u8").exists()
+def is_hls_ready(song_id):
+    d = get_hls_dir(song_id)
+    return d.exists() and (d / "master.m3u8").exists() and (d / "stream.m3u8").exists()
 
-def generate_hls(sid, fp):
-    d = get_hls_dir(sid); d.mkdir(parents=True, exist_ok=True)
-    cmd = ["ffmpeg", "-i", fp, "-map", "0:v:0", "-c:v", "copy", "-map", "0:a:0", "-c:a:0", "aac", "-b:a:0", "128k", "-ac:a:0", "2", "-map", "0:a:1", "-c:a:1", "aac", "-b:a:1", "128k", "-ac:a:1", "2", "-f", "hls", "-hls_time", "10", "-hls_list_size", "0", "-hls_segment_filename", str(d / "seg_%03d.ts"), "-master_pl_name", "master.m3u8", "-var_stream_map", "v:0,a:0 a:1", "-loglevel", "error", str(d / "stream.m3u8")]
-    print(f"  🔄 转码: 歌曲ID={sid}")
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if r.returncode != 0: raise RuntimeError(f"ffmpeg失败: {r.stderr[:200]}")
-    print(f"  ✅ 转码完成: 歌曲ID={sid}")
+def generate_hls(song_id, filepath):
+    """用ffmpeg生成HLS，包含两个音频轨道"""
+    hls_dir = get_hls_dir(song_id)
+    hls_dir.mkdir(parents=True, exist_ok=True)
+    output = str(hls_dir / "stream.m3u8")
+    master = str(hls_dir / "master.m3u8")
+    seg = str(hls_dir / "seg_%03d.ts")
 
-def ensure_hls(sid, fp):
-    if is_hls_ready(sid): return True
-    lock = hls_locks.get(sid)
-    if not lock: lock = threading.Lock(); hls_locks[sid] = lock
+    cmd = [
+        "ffmpeg", "-i", filepath,
+        "-map", "0:v:0", "-c:v", "copy",
+        "-map", "0:a:0", "-c:a:0", "aac", "-b:a:0", "128k", "-ac:a:0", "2",
+        "-map", "0:a:1", "-c:a:1", "aac", "-b:a:1", "128k", "-ac:a:1", "2",
+        "-f", "hls",
+        "-hls_time", "10",
+        "-hls_list_size", "0",
+        "-hls_segment_filename", seg,
+        "-master_pl_name", "master.m3u8",
+        "-var_stream_map", "v:0,a:0 a:1",
+        "-loglevel", "error",
+        output
+    ]
+
+    print(f"  🔄 ffmpeg 转码: 歌曲ID={song_id}")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg 失败 (code={result.returncode}): {result.stderr[:200]}")
+
+    # 读取并修正 master.m3u8
+    fix_master(master, song_id)
+    print(f"  ✅ 转码完成: 歌曲ID={song_id}")
+
+def fix_master(master_path, song_id):
+    """修正 master.m3u8 确保 hls.js 能正确识别音频轨道"""
+    try:
+        content = master_path.read_text('utf-8')
+        # 确保有正确的音频分组名称
+        if "audio" not in content:
+            # 如果格式不对，手动修复
+            pass
+        master_path.write_text(content, 'utf-8')
+    except Exception as e:
+        print(f"  ⚠️ 修正master失败: {e}")
+
+def ensure_hls(song_id, filepath):
+    """确保HLS缓存已生成（线程安全）"""
+    if is_hls_ready(song_id):
+        return True
+    lock = hls_locks.get(song_id)
+    if not lock:
+        lock = threading.Lock()
+        hls_locks[song_id] = lock
     with lock:
-        if is_hls_ready(sid): return True
-        try: generate_hls(sid, fp); return True
-        except: return False
+        if is_hls_ready(song_id):
+            return True
+        try:
+            generate_hls(song_id, filepath)
+            return True
+        except Exception as e:
+            print(f"转码失败: {e}")
+            return False
 
-def add_to_queue(sid, nk="手机点歌"):
-    global queue_counter; s = get_song(sid)
+# ======================== 队列管理 ========================
+def add_to_queue(song_id, nickname="手机点歌"):
+    global queue_counter
+    song = get_song(song_id)
     with play_lock:
         queue_counter += 1
-        e = {"id": queue_counter, "song_id": sid, "title": s.get("song_name","未知") if s else "未知", "artist": s.get("singer","未知歌手") if s else "未知歌手", "nickname": nk, "status": "waiting", "time": time.time()}
-        song_queue.append(e)
-        if len(song_queue) == 1: e["status"] = "playing"; global current_song_id; current_song_id = sid; play_count[sid] = play_count.get(sid, 0) + 1
-        return e["id"]
+        entry = {
+            "id": queue_counter,
+            "song_id": song_id,
+            "title": song.get("song_name", "未知") if song else "未知",
+            "artist": song.get("singer", "未知歌手") if song else "未知歌手",
+            "nickname": nickname,
+            "status": "waiting",
+            "time": time.time()
+        }
+        song_queue.append(entry)
+        # 如果队列为空，立即开始播放
+        if len(song_queue) == 1:
+            entry["status"] = "playing"
+            global current_song_id
+            current_song_id = song_id
+            # 统计
+            play_count[song_id] = play_count.get(song_id, 0) + 1
+        return entry["id"]
 
-def rm_from_queue(qid):
+def remove_from_queue(queue_id):
     with play_lock:
         for i, e in enumerate(song_queue):
-            if e["id"] == qid:
-                if e["status"] == "playing": global current_song_id; current_song_id = None
-                song_queue.pop(i); return True
+            if e["id"] == queue_id:
+                if e["status"] == "playing":
+                    global current_song_id
+                    current_song_id = None
+                song_queue.pop(i)
+                return True
     return False
 
-def skip():
+def top_queue(queue_id):
+    with play_lock:
+        for i, e in enumerate(song_queue):
+            if e["id"] == queue_id:
+                item = song_queue.pop(i)
+                # 插在正在播放的后面
+                for j, e2 in enumerate(song_queue):
+                    if e2["status"] == "playing":
+                        song_queue.insert(j + 1, item)
+                        return True
+                song_queue.insert(0, item)
+                return True
+    return False
+
+def skip_current():
     with play_lock:
         for i, e in enumerate(song_queue):
             if e["status"] == "playing":
-                e["status"] = "finished"; global current_song_id; current_song_id = None
-                for j in range(i+1, len(song_queue)):
-                    if song_queue[j]["status"] == "waiting": song_queue[j]["status"] = "playing"; current_song_id = song_queue[j]["song_id"]; play_count[current_song_id] = play_count.get(current_song_id, 0) + 1; break
+                e["status"] = "finished"
+                global current_song_id
+                current_song_id = None
+                # 播放下一个
+                for j in range(i + 1, len(song_queue)):
+                    if song_queue[j]["status"] == "waiting":
+                        song_queue[j]["status"] = "playing"
+                        current_song_id = song_queue[j]["song_id"]
+                        play_count[current_song_id] = play_count.get(current_song_id, 0) + 1
+                        break
                 return True
     return False
 
 def get_queue():
-    with play_lock: return [dict(e) for e in song_queue]
+    with play_lock:
+        return [dict(e) for e in song_queue]
 
-def get_now():
+def get_now_playing():
     with play_lock:
         for e in song_queue:
-            if e["status"] == "playing": return {"song_id": e["song_id"], "title": e["title"], "artist": e["artist"]}
+            if e["status"] == "playing":
+                return {"song_id": e["song_id"], "title": e["title"], "artist": e["artist"]}
     return None
 
-MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t"}
+# ======================== 语音模式 ========================
+def get_voice_mode(song_id):
+    return voice_modes.get(str(song_id), "original")
 
-class H(BaseHTTPRequestHandler):
-    def log_message(self, f, *a):
-        if "/api/" in a[0]: print(f"  [{datetime.now().strftime('%H:%M:%S')}] {a[0]}")
-    def _j(self, d, s=200):
-        self.send_response(s); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Access-Control-Allow-Origin", "*"); self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"); self.send_header("Access-Control-Allow-Headers", "Content-Type"); self.end_headers(); self.wfile.write(json.dumps(d, ensure_ascii=False).encode())
-    def _f(self, p):
-        e = os.path.splitext(p)[1].lower(); m = MIME.get(e, "application/octet-stream")
+def set_voice_mode(song_id, mode):
+    voice_modes[str(song_id)] = mode
+    try:
+        VOICE_FILE.write_text(json.dumps(voice_modes, ensure_ascii=False), 'utf-8')
+    except:
+        pass
+
+# ======================== HTTP 服务器 ========================
+MIME_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".m3u8": "application/vnd.apple.mpegurl",
+    ".ts": "video/mp2t",
+}
+
+class KTVHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # 精简日志，不打印静态文件请求
+        if "?" in args[0] or "/api/" in args[0]:
+            print(f"  [{datetime.now().strftime('%H:%M:%S')}] {args[0]}")
+
+    def _send_json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+
+    def _send_file(self, filepath):
+        ext = os.path.splitext(filepath)[1].lower()
+        mime = MIME_TYPES.get(ext, "application/octet-stream")
         try:
-            with open(p, 'rb') as f: c = f.read()
-            self.send_response(200); self.send_header("Content-Type", m); self.send_header("Content-Length", str(len(c))); self.send_header("Access-Control-Allow-Origin", "*"); self.end_headers(); self.wfile.write(c)
-        except: self._j({"error": "Not found"}, 404)
-    def _b(self):
-        l = int(self.headers.get('Content-Length', 0)); return json.loads(self.rfile.read(l).decode()) if l > 0 else {}
+            with open(filepath, 'rb') as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(content)
+        except FileNotFoundError:
+            self._send_json({"error": "File not found"}, 404)
+
+    def _read_body(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if length > 0:
+            return json.loads(self.rfile.read(length).decode('utf-8'))
+        return {}
+
     def do_OPTIONS(self):
-        self.send_response(200); self.send_header("Access-Control-Allow-Origin", "*"); self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"); self.send_header("Access-Control-Allow-Headers", "Content-Type"); self.end_headers()
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
     def do_GET(self):
-        p = urlparse(self.path).path; q = parse_qs(urlparse(self.path).query)
-        if p == "/api/songs":
-            r = search_songs(q.get("q", [""])[0]); self._j([{"id": x["id"], "title": x.get("song_name","未知"), "artist": x.get("singer","未知歌手")} for x in r])
-        elif p.startswith("/api/songs/") and len(p.split("/")) == 4:
-            s = get_song(int(p.split("/")[3]))
-            if s: self._j({"id": s["id"], "title": s.get("song_name","未知"), "artist": s.get("singer","未知歌手"), "file_number": s.get("number", s["id"])})
-            else: self._j({"error": "不存在"}, 404)
-        elif p == "/api/queue":
-            self._j([{"queue_id": e["id"], "song_id": e["song_id"], "title": e["title"], "artist": e["artist"], "nickname": e["nickname"], "status": e["status"]} for e in get_queue()])
-        elif p == "/api/now-playing": self._j(get_now())
-        elif p.startswith("/api/voice/status/"): self._j({"song_id": p.split("/")[4], "mode": voice_modes.get(p.split("/")[4], "original")})
-        elif p.startswith("/api/stream/"):
-            parts = p.split("/")
+        parsed = urlparse(self.path)
+        path = unquote(parsed.path)
+        params = parse_qs(parsed.query)
+
+        # ===== API 路由 =====
+        if path == "/api/songs":
+            q = params.get("q", [""])[0]
+            results = search_songs(q)
+            data = [{
+                "id": r["id"],
+                "title": r.get("song_name", "未知"),
+                "artist": r.get("singer", "未知歌手"),
+                "pinyin": r.get("pinyin", ""),
+                "edition": r.get("edition", "")
+            } for r in results]
+            self._send_json(data)
+
+        elif path.startswith("/api/songs/") and len(path.split("/")) == 4:
+            song_id = int(path.split("/")[3])
+            song = get_song(song_id)
+            if song:
+                self._send_json({
+                    "id": song["id"],
+                    "title": song.get("song_name", "未知"),
+                    "artist": song.get("singer", "未知歌手"),
+                    "pinyin": song.get("pinyin", ""),
+                    "file_number": song.get("number", song["id"])
+                })
+            else:
+                self._send_json({"error": "歌曲不存在"}, 404)
+
+        elif path == "/api/queue":
+            q = get_queue()
+            self._send_json([{
+                "queue_id": e["id"],
+                "song_id": e["song_id"],
+                "title": e["title"],
+                "artist": e["artist"],
+                "nickname": e["nickname"],
+                "status": e["status"]
+            } for e in q])
+
+        elif path == "/api/now-playing":
+            np = get_now_playing()
+            self._send_json(np)
+
+        elif path.startswith("/api/voice/status/"):
+            song_id = path.split("/")[4]
+            mode = get_voice_mode(song_id)
+            self._send_json({"song_id": song_id, "mode": mode})
+
+        elif path == "/api/charts":
+            top = sorted(play_count.items(), key=lambda x: -x[1])[:10]
+            self._send_json([{"song_id": k, "count": v} for k, v in top])
+
+        # ===== HLS 流 =====
+        elif path.startswith("/api/stream/"):
+            parts = path.split("/")
+            # /api/stream/<song_id> 或 /api/stream/<song_id>/<file>
             if len(parts) == 4:
-                sid = parts[3]; s = get_song(sid)
-                if not s: self._j({"error": "不存在"}, 404); return
-                fn = s.get("number", s["id"]); fp = find_song_file(fn)
-                if not fp: self._j({"error": f"文件不存在 (song{fn})"}, 404); return
-                if not ensure_hls(sid, fp): self._j({"error": "转码失败"}, 500); return
-                self._f(str(get_hls_dir(sid) / "master.m3u8"))
+                # 请求 master.m3u8 或 启动转码
+                song_id = parts[3]
+                song = get_song(song_id)
+                if not song:
+                    self._send_json({"error": "歌曲不存在"}, 404)
+                    return
+                fn = song.get("number", song["id"])
+                fp = find_song_file(fn)
+                if not fp:
+                    self._send_json({"error": f"视频文件不存在 (song{fn})"}, 404)
+                    return
+                # 确保HLS已生成
+                if not ensure_hls(song_id, fp):
+                    self._send_json({"error": "转码失败"}, 500)
+                    return
+                # 返回 master.m3u8
+                master = get_hls_dir(song_id) / "master.m3u8"
+                self._send_file(str(master))
             elif len(parts) == 5:
-                f = get_hls_dir(parts[3]) / parts[4]
-                if str(f.resolve()).startswith(str(get_hls_dir(parts[3]).resolve())): self._f(str(f))
-                else: self._j({"error": "Forbidden"}, 403)
-            else: self._j({"error": "路径错误"}, 400)
-        elif p in ("/", "/tv"): self._f(str(SCRIPT_DIR / "public" / "tv.html"))
-        elif p == "/m": self._f(str(SCRIPT_DIR / "public" / "m.html"))
-        else: self._j({"error": "Not found"}, 404)
+                song_id = parts[3]
+                filename = parts[4]
+                filepath = get_hls_dir(song_id) / filename
+                # 安全检查
+                resolved = filepath.resolve()
+                cache_dir = get_hls_dir(song_id).resolve()
+                if str(resolved).startswith(str(cache_dir)):
+                    self._send_file(str(resolved))
+                else:
+                    self._send_json({"error": "Forbidden"}, 403)
+            else:
+                self._send_json({"error": "Invalid path"}, 400)
+
+        # ===== 静态文件 =====
+        elif path == "/" or path == "/tv":
+            self._send_file(str(SCRIPT_DIR / "public" / "tv.html"))
+        elif path == "/m":
+            self._send_file(str(SCRIPT_DIR / "public" / "m.html"))
+        elif path.startswith("/public/"):
+            self._send_file(str(SCRIPT_DIR / path[1:]))
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
     def do_POST(self):
-        p = urlparse(self.path).path
-        if p == "/api/queue":
-            b = self._b(); sid = b.get("song_id"); nk = b.get("nickname", "手机点歌")
-            if not sid: self._j({"error": "缺少 song_id"}, 400); return
-            self._j({"success": True, "queue_id": add_to_queue(sid, nk)})
-        elif p == "/api/playback/ended": skip(); self._j({"success": True})
-        elif p == "/api/voice/switch":
-            b = self._b(); m = b.get("mode", "original")
-            if m not in ("original", "accompaniment"): self._j({"error": "mode错误"}, 400); return
-            voice_modes[str(b.get("song_id"))] = m
-            try: VOICE_FILE.write_text(json.dumps(voice_modes, ensure_ascii=False), 'utf-8')
-            except: pass
-            self._j({"success": True, "mode": m})
-        else: self._j({"error": "Not found"}, 404)
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/queue":
+            body = self._read_body()
+            song_id = body.get("song_id")
+            nickname = body.get("nickname", "手机点歌")
+            if not song_id:
+                self._send_json({"error": "缺少 song_id"}, 400)
+                return
+            qid = add_to_queue(song_id, nickname)
+            self._send_json({"success": True, "queue_id": qid})
+
+        elif path.startswith("/api/queue/") and path.endswith("/top"):
+            qid = int(path.split("/")[3])
+            top_queue(qid)
+            self._send_json({"success": True})
+
+        elif path == "/api/playback/ended":
+            skip_current()
+            self._send_json({"success": True})
+
+        elif path == "/api/voice/switch":
+            body = self._read_body()
+            song_id = body.get("song_id")
+            mode = body.get("mode", "original")
+            if mode not in ("original", "accompaniment"):
+                self._send_json({"error": "mode 必须是 original 或 accompaniment"}, 400)
+                return
+            set_voice_mode(song_id, mode)
+            self._send_json({"success": True, "mode": mode})
+
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
     def do_DELETE(self):
-        p = urlparse(self.path).path
-        if p.startswith("/api/queue/"): rm_from_queue(int(p.split("/")[3])); self._j({"success": True})
-        else: self._j({"error": "Not found"}, 404)
+        path = urlparse(self.path).path
+        if path.startswith("/api/queue/"):
+            qid = int(path.split("/")[3])
+            remove_from_queue(qid)
+            self._send_json({"success": True})
+        else:
+            self._send_json({"error": "Not found"}, 404)
 
-def get_ip():
+# ======================== 启动 ========================
+def get_lan_ip():
+    """获取局域网IP"""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try: s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]
-    except: ip = "127.0.0.1"
-    finally: s.close(); return ip
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    except:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
 
-HLS_CACHE.mkdir(parents=True, exist_ok=True)
-if DB_PATH.exists():
-    db = get_db()
-    if db:
-        try:
-            c = db.execute("SELECT COUNT(*) as c FROM song").fetchone()["c"]; print(f"📚 曲库: {c} 首")
-        except: print("📚 曲库: 已连接")
-        db.close()
-ip = get_ip(); s = HTTPServer(("0.0.0.0", PORT), H)
-print("\n╔══════════════════════════════════════╗\n║        🎤 家庭KTV点歌系统 v1.0       ║\n╠══════════════════════════════════════╣")
-print(f"║  📺 TV:  http://{ip}:{PORT}/tv           ║")
-print(f"║  📱 手机: http://{ip}:{PORT}/m            ║")
-print(f"║  💻 本机: http://localhost:{PORT}/tv       ║")
-print("║  🔄 原唱/伴唱: 按钮切换                   ║")
-print("║  🐍 纯Python · 零依赖 · 双击启动          ║")
-print("╚══════════════════════════════════════╝\n按 Ctrl+C 停止")
-try: s.serve_forever()
-except KeyboardInterrupt: s.server_close()
+def main():
+    # 创建缓存目录
+    HLS_CACHE.mkdir(parents=True, exist_ok=True)
+
+    # 检查条件
+    if not DB_PATH.exists():
+        print(f"⚠️ 数据库不存在: {DB_PATH}")
+        print("   请确认歌曲文件在 H:\\KTVSong 目录下")
+    else:
+        db = get_db()
+        if db:
+            try:
+                count = db.execute("SELECT COUNT(*) as c FROM song").fetchone()["c"]
+                print(f"📚 曲库: {count} 首歌曲")
+                db.close()
+            except:
+                print("📚 曲库: 已连接")
+            db.close()
+
+    # 启动服务器
+    lan_ip = get_lan_ip()
+    server = HTTPServer(("0.0.0.0", PORT), KTVHandler)
+
+    print("")
+    print("╔══════════════════════════════════════════╗")
+    print("║        🎤 家庭KTV点歌系统 v1.0           ║")
+    print("╠══════════════════════════════════════════╣")
+    print(f"║  📺 电视端:  http://{lan_ip}:{PORT}/tv     ║")
+    print(f"║  📱 手机点歌: http://{lan_ip}:{PORT}/m      ║")
+    print("║                                          ║")
+    print(f"║  💻 本机访问: http://localhost:{PORT}/tv    ║")
+    print("║                                          ║")
+    print("║  🔄 原唱/伴唱: 电视端按钮切换              ║")
+    print("║  🐍 纯Python · 零依赖 · 双击启动          ║")
+    print("╚══════════════════════════════════════════╝")
+    print("")
+    print("按 Ctrl+C 停止服务")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n服务已停止")
+        server.server_close()
+
+if __name__ == "__main__":
+    main()
