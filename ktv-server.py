@@ -167,8 +167,8 @@ def add_to_queue(song_id, nickname="手机点歌"):
         entry = {
             "id": queue_counter,
             "song_id": song_id,
-            "title": song.get("song_name", "未知") if song else "未知",
-            "artist": song.get("singer", "未知歌手") if song else "未知歌手",
+            "title": song.get("name", "未知") if song else "未知",
+            "artist": song.get("singer_names", "未知歌手") if song else "未知歌手",
             "nickname": nickname,
             "status": "waiting",
             "time": time.time()
@@ -326,9 +326,9 @@ class KTVHandler(BaseHTTPRequestHandler):
             if song:
                 self._send_json({
                     "id": song["id"],
-                    "title": song.get("song_name", "未知"),
-                    "artist": song.get("singer", "未知歌手"),
-                    "pinyin": song.get("pinyin", ""),
+                    "title": song.get("name", "未知"),
+                    "artist": song.get("singer_names", "未知歌手"),
+                    "pinyin": song.get("acronym", ""),
                     "file_number": song.get("number", song["id"])
                 })
             else:
