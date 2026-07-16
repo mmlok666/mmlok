@@ -72,20 +72,35 @@ def get_song(song_id):
         return None
 
 # ======================== 文件查找 ========================
-def find_song_file(file_number):
-    """查找歌曲MKV文件"""
+# 扫描本地视频文件 {编号: 完整路径}
+local_files = {}
+def scan_local_files():
     ktv = str(KTV_DIR)
-    names = [f"song{file_number}.mkv", f"song{file_number}.mp4",
-             f"song{str(file_number).zfill(4)}.mkv", f"song{str(file_number).zfill(4)}.mp4"]
-    for n in names:
-        p = os.path.join(ktv, n)
-        if os.path.exists(p): return p
-    # 子目录
-    for base in range(0, 4500, 500):
-        sub = f"song{base}"
-        for n in names:
-            p = os.path.join(ktv, sub, n)
-            if os.path.exists(p): return p
+    if not os.path.isdir(ktv): return
+    count = 0
+    for d in os.listdir(ktv):
+        sub = os.path.join(ktv, d)
+        if not os.path.isdir(sub) or not d.startswith('song'): continue
+        for f in os.listdir(sub):
+            fp = os.path.join(sub, f)
+            if os.path.isfile(fp) and f.isdigit():
+                local_files[f] = fp
+                count += 1
+    print(f"📹 本地视频: {count} 个文件")
+
+def find_song_file(fn):
+    """根据文件编号查找视频文件"""
+    fp = local_files.get(str(fn))
+    if fp: return fp
+    ktv = str(KTV_DIR)
+    if os.path.isdir(ktv):
+        for d in os.listdir(ktv):
+            sub = os.path.join(ktv, d)
+            if os.path.isdir(sub) and d.startswith('song'):
+                fp2 = os.path.join(sub, str(fn))
+                if os.path.exists(fp2):
+                    local_files[str(fn)] = fp2
+                    return fp2
     return None
 
 # ======================== HLS 转码 ========================
