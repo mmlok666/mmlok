@@ -109,27 +109,22 @@ def get_hls_dir(song_id):
 
 def is_hls_ready(song_id):
     d = get_hls_dir(song_id)
-    return d.exists() and (d / "master.m3u8").exists() and (d / "stream_original.m3u8").exists()
+    return d.exists() and (d / "video.mp4").exists()
 
 def generate_hls(song_id, filepath):
-    """Generate HLS streams for karaoke video"""
+    """Generate a single MP4 file with AAC audio (cache for instant playback)"""
     hls_dir = get_hls_dir(song_id)
     hls_dir.mkdir(parents=True, exist_ok=True)
-    seg = str(hls_dir / "seg_%03d.ts")
-    master_path = hls_dir / "master.m3u8"
-    for track, mode in [(0, "original"), (1, "accompaniment")]:
-        out = str(hls_dir / f"stream_{mode}.m3u8")
-        seg2 = str(hls_dir / f"seg_{mode}_%03d.ts")
-        cmd = ["ffmpeg", "-i", filepath, "-map", "0:v:0", "-c:v", "copy",
-               "-map", f"0:a:{track}", "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-               "-f", "hls", "-hls_time", "10", "-hls_list_size", "0",
-               "-hls_segment_filename", seg2, "-loglevel", "error", out]
-        print(f"  Transcoding {mode}: song {song_id}")
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg {mode} failed: {r.stderr[:200]}")
-    NL = chr(10)
-    master_path.write_text("#EXTM3U" + NL + "#EXT-X-STREAM-INF:BANDWIDTH=256000" + NL + "/api/stream/" + str(song_id) + "/stream_original.m3u8" + NL, 'utf-8')
+    out_file = hls_dir / "video.mp4"
+    if out_file.exists():
+        return
+    print(f"  Transcoding: song {song_id}")
+    cmd = ["ffmpeg", "-i", filepath, "-c:v", "copy", "-c:a", "aac",
+           "-b:a", "128k", "-ac", "2", "-movflags", "+faststart",
+           "-loglevel", "error", str(out_file)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {r.stderr[:200]}")
     print(f"  Done: song {song_id}")
 
 def fix_master(master_path, song_id):
