@@ -109,7 +109,7 @@ def get_hls_dir(song_id):
 
 def is_hls_ready(song_id):
     d = get_hls_dir(song_id)
-    return d.exists() and (d / "master.m3u8").exists() and (d / "stream.m3u8").exists()
+    return d.exists() and (d / "master.m3u8").exists() and (d / "stream_0.m3u8").exists()
 
 def generate_hls(song_id, filepath):
     """用ffmpeg生成HLS，包含两个音频轨道"""
