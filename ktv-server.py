@@ -88,6 +88,13 @@ def scan_local_files():
                 count += 1
     print(f"📹 本地视频: {count} 个文件")
 
+def wait_for_file(fp, timeout=30):
+    """Wait for a file to appear (HLS segments are generated asynchronously)"""
+    for _ in range(timeout * 10):
+        if os.path.exists(fp): return True
+        time.sleep(0.1)
+    return False
+
 def find_song_file(fn):
     """根据文件编号查找视频文件"""
     fp = local_files.get(str(fn))
