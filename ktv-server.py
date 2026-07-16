@@ -112,30 +112,25 @@ def is_hls_ready(song_id):
     return d.exists() and (d / "master.m3u8").exists() and (d / "stream_original.m3u8").exists()
 
 def generate_hls(song_id, filepath):
-    """用ffmpeg生成HLS - 用两个独立流，通过切换URL实现原唱/伴唱"""
+    """Generate HLS streams for karaoke video"""
     hls_dir = get_hls_dir(song_id)
     hls_dir.mkdir(parents=True, exist_ok=True)
     seg = str(hls_dir / "seg_%03d.ts")
     master_path = hls_dir / "master.m3u8"
-
-    # 生成两个HLS流：0=原唱(a:0), 1=伴唱(a:1)
     for track, mode in [(0, "original"), (1, "accompaniment")]:
         out = str(hls_dir / f"stream_{mode}.m3u8")
-        cmd = ["ffmpeg", "-i", filepath,
-               "-map", "0:v:0", "-c:v", "copy",
+        seg2 = str(hls_dir / f"seg_{mode}_%03d.ts")
+        cmd = ["ffmpeg", "-i", filepath, "-map", "0:v:0", "-c:v", "copy",
                "-map", f"0:a:{track}", "-c:a", "aac", "-b:a", "128k", "-ac", "2",
                "-f", "hls", "-hls_time", "10", "-hls_list_size", "0",
-               "-hls_segment_filename", str(hls_dir / f"seg_{mode}_%03d.ts"),
-               "-loglevel", "error", out]
-        print(f"  🔄 转码 {mode}: 歌曲ID={song_id}")
+               "-hls_segment_filename", seg2, "-loglevel", "error", out]
+        print(f"  Transcoding {mode}: song {song_id}")
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg {mode}失败: {r.stderr[:200]}")
-
-    # 生成 master.m3u8
-    master_path.write_text(
-        "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=256000,CODECS=\"avc1.42E01E,mp4a.40.2\"\nstream_original.m3u8\n", 'utf-8')
-    print(f"  ✅ 转码完成: 歌曲ID={song_id}")
+            raise RuntimeError(f"ffmpeg {mode} failed: {r.stderr[:200]}")
+    NL = chr(10)
+    master_path.write_text("#EXTM3U" + NL + "#EXT-X-STREAM-INF:BANDWIDTH=256000" + NL + "stream_original.m3u8" + NL, 'utf-8')
+    print(f"  Done: song {song_id}")
 
 def fix_master(master_path, song_id):
     """修正 master.m3u8 确保 hls.js 能正确识别音频轨道"""
