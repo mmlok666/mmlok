@@ -1,5 +1,4 @@
 <!DOCTYPE html><html lang=zh-CN><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1"><title>KTV</title>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}body{background:#000;color:#fff;font-family:'Microsoft YaHei',sans-serif;overflow:hidden;height:100vh;width:100vw;user-select:none}
@@ -39,16 +38,13 @@
 <div id=ql></div></div></div><div id=sr onclick="if(event.target===this)cs()"><div id=sp><div class=sh><input id=si placeholder="搜歌名/歌手/拼音…" oninput=ds(this.value)><button class=x onclick=cs()>✕</button></div>
 <div class=sb id=sr2></div></div></div>
 <script>
-var B=location.origin,h=null,c=null,v='o',p=null,st=null,vd=document.getElementById('v')
+var B=location.origin,c=null,v='o',p=null,st=null,vd=document.getElementById('v')
 new QRCode(document.getElementById('qc'),{text:B+'/m',width:100,height:100,colorDark:'#000',correctLevel:QRCode.CorrectLevel.L})
 function ps(i){c=i;document.getElementById('ld').classList.remove('h');document.getElementById('idle').classList.add('h');document.getElementById('info').classList.add('s')
-if(h){h.destroy();h=null}var u=B+'/api/stream/'+i
-if(Hls.isSupported()){h=new Hls();h.loadSource(u);h.attachMedia(vd);h.on(Hls.Events.MANIFEST_PARSED,function(){document.getElementById('ld').classList.add('h');vd.play().catch(function(){})
-setTimeout(function(){if(h&&h.audioTracks&&h.audioTracks.length>1)h.audioTrack=v==='o'?0:1},500)})
-}else{vd.src=u;vd.addEventListener('loadedmetadata',function(){document.getElementById('ld').classList.add('h');vd.play().catch(function(){})})}
+vd.src=B+'/api/stream/'+i;vd.addEventListener('loadedmetadata',function(){document.getElementById('ld').classList.add('h');vd.play().catch(function(){})})
 fetch(B+'/api/songs/'+i).then(function(r){return r.json()}).then(function(s){document.getElementById('nt').textContent=s.title;document.getElementById('nm').textContent=s.artist}).catch(function(){})
 fetch(B+'/api/voice/status/'+i).then(function(r){return r.json()}).then(function(d){v=d.mode;uv()}).catch(function(){})}
-function tv(){if(!c)return;v=v==='o'?'a':'o';uv();if(h&&h.audioTracks&&h.audioTracks.length>1)h.audioTrack=v==='o'?0:1;fetch(B+'/api/voice/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:c,mode:v})}).catch(function(){})}
+function tv(){if(!c)return;v=v==='o'?'a':'o';uv();fetch(B+'/api/voice/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:c,mode:v})}).catch(function(){})}
 function uv(){var b=document.getElementById('bw'),bg=document.getElementById('vb');if(v==='o'){b.textContent='🎵 原唱';b.classList.remove('a');bg.textContent='🎵 原唱'}else{b.textContent='🎵 伴唱';b.classList.add('a');bg.textContent='🎵 伴唱'}bg.classList.add('s')}
 function lq(){fetch(B+'/api/queue').then(function(r){return r.json()}).then(function(q){document.getElementById('qc2').textContent=q.length+'首'
 var el=document.getElementById('ql');if(!q.length){el.innerHTML='<div id=ep>🎵 暂无点歌</div>';return}
