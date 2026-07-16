@@ -131,12 +131,13 @@ def generate_hls(sid, fp):
     
     # Write master.m3u8 immediately (before transcoding starts)
     NL = chr(10)
+    prefix = "/api/stream/" + str(sid)
     master = NL.join([
         "#EXTM3U", "#EXT-X-VERSION:6",
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"audio0.m3u8\"",
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u4f34\u5531\",DEFAULT=NO,AUTOSELECT=NO,URI=\"audio1.m3u8\"",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"\"" + prefix + "/audio0.m3u8\"",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u4f34\u5531\",DEFAULT=NO,AUTOSELECT=NO,URI=\"\"" + prefix + "/audio1.m3u8\"",
         "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO=\"aud\"",
-        "video.m3u8", ""
+        prefix + "/video.m3u8", ""
     ])
     (hls_dir / "master.m3u8").write_text(master, 'utf-8')
     
