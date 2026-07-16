@@ -144,19 +144,19 @@ def generate_hls(sid, fp):
         # Video: copy directly (H.264)
         cmd_v = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:v:0", "-an",
                  "-c:v", "copy", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
-                 "-hls_flags", "independent_segments+temp_file",
+                 "-hls_flags", "independent_segments",
                  "-hls_segment_filename", seg_v, pl_v]
         # Audio 0: original track
         cmd_a0 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:0", "-vn",
                   "-c:a", "aac", "-b:a", "128k", "-ac", "2",
                   "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
-                  "-hls_flags", "independent_segments+temp_file",
+                  "-hls_flags", "independent_segments",
                   "-hls_segment_filename", seg_a0, pl_a0]
         # Audio 1: accompaniment track
         cmd_a1 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:1", "-vn",
                   "-c:a", "aac", "-b:a", "128k", "-ac", "2",
                   "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
-                  "-hls_flags", "independent_segments+temp_file",
+                  "-hls_flags", "independent_segments",
                   "-hls_segment_filename", seg_a1, pl_a1]
         
         # Run all three in parallel
