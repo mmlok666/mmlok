@@ -109,38 +109,32 @@ def get_hls_dir(song_id):
 
 def is_hls_ready(song_id):
     d = get_hls_dir(song_id)
-    return d.exists() and (d / "master.m3u8").exists() and (d / "stream_0.m3u8").exists()
+    return d.exists() and (d / "master.m3u8").exists() and (d / "stream_original.m3u8").exists()
 
 def generate_hls(song_id, filepath):
-    """用ffmpeg生成HLS，包含两个音频轨道"""
+    """用ffmpeg生成HLS - 用两个独立流，通过切换URL实现原唱/伴唱"""
     hls_dir = get_hls_dir(song_id)
     hls_dir.mkdir(parents=True, exist_ok=True)
-    output = str(hls_dir / "stream.m3u8")
-    master = str(hls_dir / "master.m3u8")
     seg = str(hls_dir / "seg_%03d.ts")
+    master_path = hls_dir / "master.m3u8"
 
-    cmd = [
-        "ffmpeg", "-i", filepath,
-        "-map", "0:v:0", "-c:v", "copy",
-        "-map", "0:a:0", "-c:a:0", "aac", "-b:a:0", "128k", "-ac:a:0", "2",
-        "-map", "0:a:1", "-c:a:1", "aac", "-b:a:1", "128k", "-ac:a:1", "2",
-        "-f", "hls",
-        "-hls_time", "10",
-        "-hls_list_size", "0",
-        "-hls_segment_filename", seg,
-        "-master_pl_name", "master.m3u8",
-        "-var_stream_map", "v:0,a:0 a:1",
-        "-loglevel", "error",
-        output
-    ]
+    # 生成两个HLS流：0=原唱(a:0), 1=伴唱(a:1)
+    for track, mode in [(0, "original"), (1, "accompaniment")]:
+        out = str(hls_dir / f"stream_{mode}.m3u8")
+        cmd = ["ffmpeg", "-i", filepath,
+               "-map", "0:v:0", "-c:v", "copy",
+               "-map", f"0:a:{track}", "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+               "-f", "hls", "-hls_time", "10", "-hls_list_size", "0",
+               "-hls_segment_filename", str(hls_dir / f"seg_{mode}_%03d.ts"),
+               "-loglevel", "error", out]
+        print(f"  🔄 转码 {mode}: 歌曲ID={song_id}")
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(f"ffmpeg {mode}失败: {r.stderr[:200]}")
 
-    print(f"  🔄 ffmpeg 转码: 歌曲ID={song_id}")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg 失败 (code={result.returncode}): {result.stderr[:200]}")
-
-    # 读取并修正 master.m3u8
-    fix_master(master, song_id)
+    # 生成 master.m3u8
+    master_path.write_text(
+        "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=256000,CODECS=\"avc1.42E01E,mp4a.40.2\"\nstream_original.m3u8\n", 'utf-8')
     print(f"  ✅ 转码完成: 歌曲ID={song_id}")
 
 def fix_master(master_path, song_id):
