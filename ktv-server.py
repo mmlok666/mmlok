@@ -109,23 +109,56 @@ def get_hls_dir(song_id):
 
 def is_hls_ready(song_id):
     d = get_hls_dir(song_id)
-    return d.exists() and (d / "video.mp4").exists()
+    return d.exists() and (d / "master.m3u8").exists()
 
-def generate_hls(song_id, filepath):
-    """Generate a single MP4 file with AAC audio (cache for instant playback)"""
-    hls_dir = get_hls_dir(song_id)
+def generate_hls(sid, fp):
+    """Generate HLS in background - uses event playlist for instant playback"""
+    hls_dir = get_hls_dir(sid)
     hls_dir.mkdir(parents=True, exist_ok=True)
-    out_file = hls_dir / "video.mp4"
-    if out_file.exists():
-        return
-    print(f"  Transcoding: song {song_id}")
-    cmd = ["ffmpeg", "-i", filepath, "-c:v", "copy", "-c:a", "aac",
-           "-b:a", "128k", "-ac", "2", "-movflags", "+faststart",
-           "-loglevel", "error", str(out_file)]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if r.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {r.stderr[:200]}")
-    print(f"  Done: song {song_id}")
+    seg_v = str(hls_dir / "video_%04d.ts")
+    seg_a0 = str(hls_dir / "audio0_%04d.ts")
+    seg_a1 = str(hls_dir / "audio1_%04d.ts")
+    pl_v = str(hls_dir / "video.m3u8")
+    pl_a0 = str(hls_dir / "audio0.m3u8")
+    pl_a1 = str(hls_dir / "audio1.m3u8")
+    
+    # Write master.m3u8 immediately (before transcoding starts)
+    NL = chr(10)
+    master = "#EXTM3U" + NL + "#EXT-X-VERSION:6" + NL
+    master += "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="原唱",DEFAULT=YES,AUTOSELECT=YES,URI="audio0.m3u8"" + NL
+    master += "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="伴唱",DEFAULT=NO,AUTOSELECT=NO,URI="audio1.m3u8"" + NL
+    master += "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO="aud"" + NL + "video.m3u8" + NL
+    (hls_dir / "master.m3u8").write_text(master, 'utf-8')
+    
+    def transcode():
+        # Video: copy directly (H.264)
+        cmd_v = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:v:0", "-an",
+                 "-c:v", "copy", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
+                 "-hls_flags", "independent_segments+temp_file",
+                 "-hls_segment_filename", seg_v, pl_v]
+        # Audio 0: original track
+        cmd_a0 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:0", "-vn",
+                  "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+                  "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
+                  "-hls_flags", "independent_segments+temp_file",
+                  "-hls_segment_filename", seg_a0, pl_a0]
+        # Audio 1: accompaniment track
+        cmd_a1 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:1", "-vn",
+                  "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+                  "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
+                  "-hls_flags", "independent_segments+temp_file",
+                  "-hls_segment_filename", seg_a1, pl_a1]
+        
+        # Run all three in parallel
+        procs = [subprocess.Popen(cmd_v, stderr=subprocess.PIPE),
+                 subprocess.Popen(cmd_a0, stderr=subprocess.PIPE),
+                 subprocess.Popen(cmd_a1, stderr=subprocess.PIPE)]
+        for p in procs:
+            p.wait()
+        print(f"  Done: song {sid}")
+    
+    threading.Thread(target=transcode, daemon=True).start()
+    return True
 
 def fix_master(master_path, song_id):
     """修正 master.m3u8 确保 hls.js 能正确识别音频轨道"""
