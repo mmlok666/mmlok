@@ -21,23 +21,6 @@ VOICE_FILE = Path(__file__).parent / "voice-mode.json"
 SCRIPT_DIR = Path(__file__).parent
 
 # ======================== 全局状态 ========================
-# 从歌单.txt 构建编号映射 {歌名: 文件编号}
-song_file_map = {}
-song_list_path = KTV_DIR / "歌单.txt"
-if song_list_path.exists():
-    try:
-        for line in song_list_path.read_text('utf-8').splitlines():
-            line = line.strip()
-            if not line: continue
-            parts = line.split(' - ')
-            if len(parts) >= 3:
-                name = parts[1].strip()
-                num = parts[-1].strip()
-                try: song_file_map[name] = int(num)
-                except: pass
-        print(f"📋 歌单映射: {len(song_file_map)} 首")
-    except: pass
-
 song_queue = []          # 队列: [{id, song_id, title, artist, nickname, status}]
 queue_counter = 0        # 队列ID计数器
 current_song_id = None   # 当前播放歌曲ID
