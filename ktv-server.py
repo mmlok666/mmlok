@@ -129,7 +129,7 @@ def generate_hls(song_id, filepath):
         if r.returncode != 0:
             raise RuntimeError(f"ffmpeg {mode} failed: {r.stderr[:200]}")
     NL = chr(10)
-    master_path.write_text("#EXTM3U" + NL + "#EXT-X-STREAM-INF:BANDWIDTH=256000" + NL + "stream_original.m3u8" + NL, 'utf-8')
+    master_path.write_text("#EXTM3U" + NL + "#EXT-X-STREAM-INF:BANDWIDTH=256000" + NL + "/api/stream/" + str(song_id) + "/stream_original.m3u8" + NL, 'utf-8')
     print(f"  Done: song {song_id}")
 
 def fix_master(master_path, song_id):
