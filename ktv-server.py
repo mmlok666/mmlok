@@ -45,7 +45,6 @@ def get_db():
     return db
 
 def search_songs(query):
-    """搜索歌曲，支持歌名/歌手/拼音"""
     db = get_db()
     if not db: return []
     try:
@@ -53,16 +52,12 @@ def search_songs(query):
             rows = db.execute("SELECT * FROM song ORDER BY id LIMIT 50").fetchall()
         else:
             q = f"%{query.strip()}%"
-            rows = db.execute(
-                "SELECT * FROM song WHERE song_name LIKE ? OR singer LIKE ? OR pinyin LIKE ? OR id LIKE ? ORDER BY id LIMIT 100",
-                (q, q, q, q)
-            ).fetchall()
+            rows = db.execute("SELECT * FROM song WHERE name LIKE ? OR singer_names LIKE ? OR acronym LIKE ? OR id LIKE ? ORDER BY id LIMIT 100", (q, q, q, q)).fetchall()
         db.close()
         return [dict(r) for r in rows]
     except Exception as e:
         print(f"搜索错误: {e}")
-        db.close()
-        return []
+        db.close(); return []
 
 def get_song(song_id):
     """根据ID获取歌曲"""
