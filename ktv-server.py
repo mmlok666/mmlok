@@ -131,10 +131,13 @@ def generate_hls(sid, fp):
     
     # Write master.m3u8 immediately (before transcoding starts)
     NL = chr(10)
-    master = "#EXTM3U" + NL + "#EXT-X-VERSION:6" + NL
-    master += "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="原唱",DEFAULT=YES,AUTOSELECT=YES,URI="audio0.m3u8"" + NL
-    master += "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="伴唱",DEFAULT=NO,AUTOSELECT=NO,URI="audio1.m3u8"" + NL
-    master += "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO="aud"" + NL + "video.m3u8" + NL
+    master = NL.join([
+        "#EXTM3U", "#EXT-X-VERSION:6",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"audio0.m3u8\"",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u4f34\u5531\",DEFAULT=NO,AUTOSELECT=NO,URI=\"audio1.m3u8\"",
+        "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO=\"aud\"",
+        "video.m3u8", ""
+    ])
     (hls_dir / "master.m3u8").write_text(master, 'utf-8')
     
     def transcode():
