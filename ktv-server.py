@@ -313,9 +313,9 @@ class KTVHandler(BaseHTTPRequestHandler):
             results = search_songs(q)
             data = [{
                 "id": r["id"],
-                "title": r.get("song_name", "未知"),
-                "artist": r.get("singer", "未知歌手"),
-                "pinyin": r.get("pinyin", ""),
+                "title": r.get("name", "未知"),
+                "artist": r.get("singer_names", "未知歌手"),
+                "pinyin": r.get("acronym", ""),
                 "edition": r.get("edition", "")
             } for r in results]
             self._send_json(data)
