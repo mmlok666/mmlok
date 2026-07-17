@@ -120,8 +120,6 @@ def is_hls_ready(song_id):
 def generate_hls(sid, fp):
     """Generate HLS"""
     hls_dir = get_hls_dir(sid)
-    # Delete old cache
-    if hls_dir.exists(): shutil.rmtree(str(hls_dir))
     hls_dir.mkdir(parents=True, exist_ok=True)
     
     # Probe audio tracks
