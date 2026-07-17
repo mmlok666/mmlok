@@ -58,7 +58,13 @@ def search_songs(query):
                 (q, q, q, q)
             ).fetchall()
         db.close()
-        return [dict(r) for r in rows]
+        results = []
+        for r in rows:
+            d = dict(r)
+            fn = str(d.get("number", d["id"]))
+            if fn in local_files:
+                results.append(d)
+        return results
     except Exception as e:
         print(f"搜索错误: {e}")
         db.close()
@@ -77,6 +83,21 @@ def get_song(song_id):
         return None
 
 # ======================== 文件查找 ========================
+local_files = {}
+def scan_local_files():
+    ktv = str(KTV_DIR)
+    if not os.path.isdir(ktv): return
+    count = 0
+    for d in os.listdir(ktv):
+        sub = os.path.join(ktv, d)
+        if not os.path.isdir(sub) or not d.startswith('song'): continue
+        for f in os.listdir(sub):
+            fp = os.path.join(sub, f)
+            if os.path.isfile(fp) and f.isdigit():
+                local_files[f] = fp
+                count += 1
+    print(f"\U0001f4f9 本地视频: {count} 个文件，搜歌只显示本地有的歌")
+
 def find_song_file(file_number):
     """查找歌曲MKV文件"""
     ktv = str(KTV_DIR)
@@ -486,6 +507,7 @@ def get_lan_ip():
 def main():
     # 创建缓存目录
     HLS_CACHE.mkdir(parents=True, exist_ok=True)
+    scan_local_files()
 
     # 检查条件
     if not DB_PATH.exists():
