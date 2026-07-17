@@ -45,7 +45,7 @@
 <script>
 var B=location.origin,h=null,c=null,v='o',p=null,st=null,vd=document.getElementById('v')
 new QRCode(document.getElementById('qc'),{text:B+'/m',width:100,height:100,colorDark:'#000',correctLevel:QRCode.CorrectLevel.L})
-function seek(e){var r=e.target.getBoundingClientRect(),p=(e.clientX-r.left)/r.width;vd.currentTime=p*vd.duration}
+function seek(e){var r=e.target.getBoundingClientRect(),p=(e.clientX-r.left)/r.width,d=vd.duration;if(d&&isFinite(d))vd.currentTime=p*d}
 function fmt(t){t=t||0;var m=Math.floor(t/60),s=Math.floor(t%60);return(m<10?'0':'')+m+':'+(s<10?'0':'')+s}
 setInterval(function(){if(vd.duration){var p=vd.currentTime/vd.duration*100;document.getElementById('seekfill').style.width=p+'%';document.getElementById('seetime').textContent=fmt(vd.currentTime)+'/'+fmt(vd.duration)}},500)
 function ps(i){c=i;document.getElementById('ld').classList.remove('h');document.getElementById('idle').classList.add('h');document.getElementById('info').classList.add('s')
