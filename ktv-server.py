@@ -119,55 +119,52 @@ def is_hls_ready(song_id):
     return d.exists() and (d / "master.m3u8").exists()
 
 def generate_hls(sid, fp):
-    """Generate HLS in background - uses event playlist for instant playback"""
+    """Generate HLS with audio track detection"""
     hls_dir = get_hls_dir(sid)
     hls_dir.mkdir(parents=True, exist_ok=True)
     seg_v = str(hls_dir / "video_%04d.ts")
-    seg_a0 = str(hls_dir / "audio0_%04d.ts")
-    seg_a1 = str(hls_dir / "audio1_%04d.ts")
     pl_v = str(hls_dir / "video.m3u8")
     pl_a0 = str(hls_dir / "audio0.m3u8")
     pl_a1 = str(hls_dir / "audio1.m3u8")
     
-    # Write master.m3u8 immediately (before transcoding starts)
+    # Probe audio tracks
+    audio_tracks = 0
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", fp], capture_output=True, text=True, timeout=30)
+        audio_tracks = len(r.stdout.strip().split(chr(10))) if r.stdout.strip() else 0
+    except: pass
+    print(f"  Audio tracks: {audio_tracks}")
+    
+    # Video track
+    cmd_v = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:v:0", "-an", "-c:v", "copy", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_v, pl_v]
+    
+    # Audio 0: original track
+    seg_a0 = str(hls_dir / "audio0_%04d.ts")
+    cmd_a0 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:0", "-vn", "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_a0, pl_a0]
+    
+    # Audio 1: use track 1 if available, else use left channel from track 0
+    seg_a1 = str(hls_dir / "audio1_%04d.ts")
+    if audio_tracks >= 2:
+        cmd_a1 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:1", "-vn", "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_a1, pl_a1]
+    else:
+        # Extract left channel (accompaniment) from stereo track 0
+        cmd_a1 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:0", "-vn", "-af", "pan=mono|c0=FL", "-c:a", "aac", "-b:a", "128k", "-ac", "1", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_a1, pl_a1]
+    
+    # Write master.m3u8 immediately
     NL = chr(10)
     prefix = "/api/stream/" + str(sid)
-    master = NL.join([
-        "#EXTM3U", "#EXT-X-VERSION:6",
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"" + prefix + "/audio0.m3u8\"",
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u4f34\u5531\",DEFAULT=NO,AUTOSELECT=NO,URI=\"" + prefix + "/audio1.m3u8\"",
-        "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO=\"aud\"",
-        prefix + "/video.m3u8", ""
-    ])
+    master = NL.join(["#EXTM3U", "#EXT-X-VERSION:6",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"\"" + prefix + "/audio0.m3u8\"",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u4f34\u5531\",DEFAULT=NO,AUTOSELECT=NO,URI=\"\"" + prefix + "/audio1.m3u8\"",
+        "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO=\"aud\"", prefix + "/video.m3u8", ""])
     (hls_dir / "master.m3u8").write_text(master, 'utf-8')
     
     def transcode():
-        # Video: copy directly (H.264)
-        cmd_v = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:v:0", "-an",
-                 "-c:v", "copy", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
-                 "-hls_flags", "independent_segments",
-                 "-hls_segment_filename", seg_v, pl_v]
-        # Audio 0: original track
-        cmd_a0 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:0", "-vn",
-                  "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-                  "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
-                  "-hls_flags", "independent_segments",
-                  "-hls_segment_filename", seg_a0, pl_a0]
-        # Audio 1: accompaniment track
-        cmd_a1 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:1", "-vn",
-                  "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-                  "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event",
-                  "-hls_flags", "independent_segments",
-                  "-hls_segment_filename", seg_a1, pl_a1]
-        
-        # Run all three in parallel
         procs = [subprocess.Popen(cmd_v, stderr=subprocess.PIPE),
                  subprocess.Popen(cmd_a0, stderr=subprocess.PIPE),
                  subprocess.Popen(cmd_a1, stderr=subprocess.PIPE)]
-        for p in procs:
-            p.wait()
+        for p in procs: p.wait()
         print(f"  Done: song {sid}")
-    
     threading.Thread(target=transcode, daemon=True).start()
     return True
 
