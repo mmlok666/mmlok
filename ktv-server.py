@@ -94,6 +94,12 @@ def find_song_file(file_number):
     return None
 
 # ======================== HLS 转码 ========================
+def wait_for_file(fp, timeout=60):
+    for _ in range(timeout * 10):
+        if os.path.exists(fp) and os.path.getsize(fp) > 0: return True
+        time.sleep(0.1)
+    return False
+
 def get_hls_dir(song_id):
     return HLS_CACHE / str(song_id)
 
