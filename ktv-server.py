@@ -118,8 +118,10 @@ def is_hls_ready(song_id):
     return d.exists() and (d / "master.m3u8").exists() and (d / "stream.m3u8").exists()
 
 def generate_hls(sid, fp):
-    """Generate HLS - separate video/audio, probe tracks first"""
+    """Generate HLS"""
     hls_dir = get_hls_dir(sid)
+    # Delete old cache
+    if hls_dir.exists(): shutil.rmtree(str(hls_dir))
     hls_dir.mkdir(parents=True, exist_ok=True)
     
     # Probe audio tracks
