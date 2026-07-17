@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang=zh-CN><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>点歌</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d2b;color:#fff;font-family:'Microsoft YaHei',sans-serif;min-height:100vh;padding-bottom:60px}
+#h{padding:16px;display:flex;align-items:center;gap:10px}#h .l{font-size:20px;font-weight:700;background:linear-gradient(135deg,#7c2cf7,#36d9f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+#h .o{font-size:12px;color:#4caf50;background:rgba(76,175,80,.15);padding:3px 10px;border-radius:12px}
+#sb{margin:0 16px 12px}#sb input{width:100%;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.3);color:#fff;font-size:15px;outline:none}
+#sb input:focus{border-color:#7c2cf7}
+#nb{display:flex;align-items:center;padding:10px 16px;margin:0 16px 10px;gap:8px;background:rgba(255,255,255,.03);border-radius:10px}
+#nb label{font-size:13px;color:rgba(255,255,255,.5);white-space:nowrap}#nb input{flex:1;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.3);color:#fff;font-size:13px;outline:none}
+#np{display:none;margin:0 16px 12px;padding:14px;background:linear-gradient(135deg,rgba(124,44,247,.2),rgba(54,217,247,.1));border-radius:14px;border:1px solid rgba(124,44,247,.3)}
+#np.s{display:block}#np .l{font-size:12px;color:rgba(255,255,255,.4);margin-bottom:4px}#np .t{font-size:18px;font-weight:700}#np .a{font-size:14px;color:rgba(255,255,255,.5);margin-top:2px}
+#tb{display:flex;margin:0 16px 12px;gap:8px}.tb{padding:8px 16px;border-radius:8px;border:none;font-size:14px;cursor:pointer;color:rgba(255,255,255,.5);background:rgba(255,255,255,.05)}
+.tb.on{color:#fff;background:rgba(124,44,247,.4)}#ct{padding:0 16px}#re{display:none}#re.s{display:block}#qv{display:none}#qv.s{display:block}
+.si{display:flex;align-items:center;padding:12px 14px;border-radius:12px;margin-bottom:6px;background:rgba(255,255,255,.03)}
+.si .i{flex:1;min-width:0}.si .i .t{font-size:15px;font-weight:600}.si .i .m{font-size:13px;color:rgba(255,255,255,.4);margin-top:2px}
+.si .a{padding:8px 18px;border:none;background:linear-gradient(135deg,#7c2cf7,#36d9f7);color:#fff;border-radius:10px;font-size:14px;cursor:pointer;white-space:nowrap}
+#emp{text-align:center;padding:40px;color:rgba(255,255,255,.3)}.qi{display:flex;align-items:center;padding:12px 14px;border-radius:12px;margin-bottom:6px;background:rgba(255,255,255,.03)}
+.qi.p{background:rgba(124,44,247,.15);border:1px solid rgba(124,44,247,.3)}.qi .n{width:26px;text-align:center;font-size:14px;color:rgba(255,255,255,.4)}
+.qi .i{flex:1;min-width:0}.qi .i .t{font-size:15px;font-weight:600}.qi .i .m{font-size:13px;color:rgba(255,255,255,.4);margin-top:2px}
+.qi .d{padding:6px 12px;border:none;background:rgba(255,79,155,.2);color:#ff4f9b;border-radius:8px;font-size:13px;cursor:pointer}
+#tt{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 22px;border-radius:10px;font-size:14px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+#tt.s{opacity:1}
+</style><body><div id=tt></div><div id=h><span class=l>🎤 点歌</span><span class=o>🟢 在线</span></div>
+<div id=sb><input id=si placeholder="搜歌名、歌手、拼音…" oninput=ds(this.value)></div>
+<div id=nb><label>昵称</label><input id=nk placeholder="你的昵称" maxlength=8></div>
+<div id=np></div><div id=tb><button class="tb on" onclick="sw('s')">🔍 搜歌</button><button class=tb onclick="sw('q')">📋 队列 <span id=qc>(0)</span></button></div>
+<div id=ct><div id=re></div><div id=qv><div id=ql></div></div></div>
+<script>
+var B=location.origin,st=null,nk=localStorage.getItem('nk')||'手机点歌';document.getElementById('nk').value=nk
+document.getElementById('nk').addEventListener('input',function(){nk=this.value.trim()||'手机点歌';localStorage.setItem('nk',nk)})
+function ds(q){clearTimeout(st);var el=document.getElementById('re');if(!q.trim()){el.innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">🔍 输入搜索</div>';return}
+st=setTimeout(function(){fetch(B+'/api/songs?q='+encodeURIComponent(q)).then(function(r){return r.json()}).then(function(s){el.classList.add('s');document.getElementById('qv').classList.remove('s')
+if(!s.length){el.innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">未找到</div>';return}
+el.innerHTML=s.map(function(s){return'<div class="si"><div class="i"><div class="t">'+s.title+'</div><div class="m">'+s.artist+'</div></div><button class="a" onclick="aq('+s.id+')">点歌</button></div>'}).join('')})},300)}
+function aq(i){fetch(B+'/api/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:i,nickname:nk})}).then(function(r){return r.json()}).then(function(d){if(d.success){tt('✅ 已加入');lq()}}).catch(function(){tt('❌ 失败')})}
+function lq(){fetch(B+'/api/queue').then(function(r){return r.json()}).then(function(q){document.getElementById('qc').textContent='('+q.length+')';var el=document.getElementById('ql')
+if(!q.length){el.innerHTML='<div id=emp><div style="font-size:48px;margin-bottom:10px">🎵</div>暂无点歌</div>';return}
+el.innerHTML=q.map(function(e,i){var p=e.status==='playing';return'<div class="qi'+(p?' p':'')+'"><div class="n">'+(p?'♪':(i+1))+'</div><div class="i"><div class="t">'+e.title+'</div><div class="m">'+e.artist+' · '+e.nickname+(p?' <span style="color:#7c2cf7">播放中</span>':'')+'</div></div>'+(p?'':'<button class="d" onclick="rq('+e.queue_id+')">✕</button>')+'</div>'}).join('')})}
+function rq(i){fetch(B+'/api/queue/'+i,{method:'DELETE'}).then(function(){lq();lnp()})}
+function lnp(){fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){var el=document.getElementById('np');if(d){el.classList.add('s');el.innerHTML='<div class="l">▶ 播放中</div><div class="t">'+d.title+'</div><div class="a">'+d.artist+'</div>'}else el.classList.remove('s')})}
+function sw(t){document.querySelectorAll('.tb').forEach(function(e){e.classList.remove('on')});if(t==='s'){document.querySelectorAll('.tb')[0].classList.add('on');document.getElementById('re').classList.add('s');document.getElementById('qv').classList.remove('s')}else{document.querySelectorAll('.tb')[1].classList.add('on');document.getElementById('re').classList.remove('s');document.getElementById('qv').classList.add('s');lq()}}
+function tt(m){var el=document.getElementById('tt');el.textContent=m;el.classList.add('s');setTimeout(function(){el.classList.remove('s')},2000)}
+setInterval(function(){lnp();if(document.getElementById('qv').classList.contains('s'))lq()},3000)
+lnp();lq()
+</script>
