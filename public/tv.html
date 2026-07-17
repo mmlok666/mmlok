@@ -38,7 +38,7 @@
 </style>
 <body><div id=app><div id=va><video id=v playsinline autoplay muted></video>
 <div id=ld><div class=sp></div></div>
-<div id=idle><h1>🎤 KTV</h1></div>
+<div id=idle><h1>🎤 KTV</h1></div><div id=umbtn onclick="um=1;localStorage.setItem('um','1');vd.muted=false;document.getElementById('umbtn').style.display='none'" style="position:absolute;bottom:120px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(124,44,247,.8);color:#fff;padding:12px 28px;border-radius:24px;font-size:18px;cursor:pointer;display:none">🔊 点击取消静音</div>
 <div id=info><div class=t id=nt>—</div><div class=m id=nm>—</div></div><div id=vb></div>
 <div id=qr><div id=qc></div><div class=l>扫码点歌</div></div>
 <div id=sbar><div id=st onclick="seek(event)"><div id=sf></div></div><div id=stm></div></div>
@@ -53,7 +53,7 @@ new QRCode(document.getElementById('qc'),{text:B+'/m',width:100,height:100,color
 function ps(i){c=i;document.getElementById('ld').classList.remove('h');document.getElementById('idle').classList.add('h');document.getElementById('info').classList.add('s')
 if(h){h.destroy();h=null}vd.removeAttribute('src');vd.load();vd.currentTime=0
 var u=B+'/api/stream/'+i;h=new Hls({startPosition:0,debug:false});h.loadSource(u);h.attachMedia(vd)
-h.on(Hls.Events.MANIFEST_PARSED,function(){vd.currentTime=0;if(!um){vd.muted=true;vd.onclick=function(){um=1;localStorage.setItem("um","1");vd.muted=false;vd.play();vd.onclick=null}}document.getElementById('ld').classList.add('h');vd.play().catch(function(){});vd.onended=function(){fetch(B+"/api/playback/ended",{method:"POST"}).then(function(){setTimeout(function(){fetch(B+"/api/now-playing").then(function(r){return r.json()}).then(function(d){if(d)ps(d.song_id);else{document.getElementById("idle").classList.remove("h");document.getElementById("info").classList.remove("s")}})},500)})}})
+h.on(Hls.Events.MANIFEST_PARSED,function(){vd.currentTime=0;if(!um){vd.muted=true;document.getElementById("umbtn").style.display="block"}document.getElementById('ld').classList.add('h');vd.play().catch(function(){});vd.onended=function(){fetch(B+"/api/playback/ended",{method:"POST"}).then(function(){setTimeout(function(){fetch(B+"/api/now-playing").then(function(r){return r.json()}).then(function(d){if(d)ps(d.song_id);else{document.getElementById("idle").classList.remove("h");document.getElementById("info").classList.remove("s")}})},500)})}})
 fetch(B+'/api/songs/'+i).then(function(r){return r.json()}).then(function(s){document.getElementById('nt').textContent=s.title;document.getElementById('nm').textContent=s.artist}).catch(function(){})
 fetch(B+'/api/voice/status/'+i).then(function(r){return r.json()}).then(function(d){v=d.mode;uv()}).catch(function(){})}
 function tv(){if(!c)return;v=v==='o'?'a':'o';uv();if(h&&h.audioTracks&&h.audioTracks.length>1)h.audioTrack=v==='o'?0:1;fetch(B+'/api/voice/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:c,mode:v==='o'?'original':'accompaniment'})}).catch(function(){})}
