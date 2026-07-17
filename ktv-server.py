@@ -116,12 +116,16 @@ def get_hls_dir(song_id):
 
 def is_hls_ready(song_id):
     d = get_hls_dir(song_id)
-    return d.exists() and (d / "master.m3u8").exists()
+    return False
 
 def generate_hls(sid, fp):
-    """Generate HLS with audio track detection"""
+    """Generate HLS with audio track detection and fallback"""
     hls_dir = get_hls_dir(sid)
     hls_dir.mkdir(parents=True, exist_ok=True)
+    # Remove old cache for this song
+    for f in os.listdir(hls_dir): 
+        fp2 = os.path.join(hls_dir, f)
+        if os.path.isfile(fp2): os.remove(fp2)
     seg_v = str(hls_dir / "video_%04d.ts")
     pl_v = str(hls_dir / "video.m3u8")
     pl_a0 = str(hls_dir / "audio0.m3u8")
