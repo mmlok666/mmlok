@@ -10,6 +10,10 @@
 #info{position:absolute;left:0;right:0;bottom:0;padding:16px 20px;background:linear-gradient(0,rgba(0,0,0,.9),transparent);z-index:3;display:none}#info.s{display:block}
 #info .t{font-size:28px;font-weight:700}#info .m{font-size:16px;color:rgba(255,255,255,.6);margin-top:4px}
 #vb{position:absolute;bottom:80px;left:20px;z-index:4;background:rgba(124,44,247,.5);padding:6px 14px;border-radius:20px;font-size:14px;display:none}#vb.s{display:block}
+#seekbar{position:absolute;bottom:0;left:0;right:0;z-index:10;padding:4px 12px;background:rgba(0,0,0,.5);cursor:pointer;display:flex;align-items:center;gap:8px;opacity:0;transition:opacity .3s}#va:hover #seekbar{opacity:1}
+#seektrack{flex:1;height:5px;background:rgba(255,255,255,.2);border-radius:3px;position:relative}
+#seekfill{height:100%;background:linear-gradient(90deg,#7c2cf7,#36d9f7);border-radius:3px;width:0%}
+#seetime{font-size:12px;color:rgba(255,255,255,.6);white-space:nowrap;min-width:80px;text-align:right}
 #qr{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);border-radius:10px;padding:6px;text-align:center;z-index:5;pointer-events:none}
 #qr canvas{display:block!important;border-radius:4px}#qr .l{font-size:12px;color:rgba(255,255,255,.5);margin-top:3px}
 #sd{width:380px;background:#0d0d2b;display:flex;flex-direction:column;border-left:1px solid rgba(255,255,255,.05)}
@@ -31,8 +35,9 @@
 .si .i{flex:1;min-width:0}.si .i .t{font-size:15px;font-weight:600}.si .i .m{font-size:13px;color:rgba(255,255,255,.4);margin-top:2px}
 .si .a{padding:6px 16px;border:none;background:linear-gradient(135deg,#7c2cf7,#36d9f7);color:#fff;border-radius:8px;font-size:14px;cursor:pointer}
 </style>
-<body><div id=app><div id=va><video id=v playsinline autoplay controls></video><div id=ld><div class=sp></div></div>
+<body><div id=app><div id=va><video id=v playsinline autoplay></video><div id=ld><div class=sp></div></div>
 <div id=idle><h1>🎤 KTV</h1></div><div id=info><div class=t id=nt>—</div><div class=m id=nm>—</div></div><div id=vb></div>
+<div id=seekbar><div id=seektrack onclick=seek(event)><div id=seekfill></div></div><div id=seetime></div></div>
 <div id=qr><div id=qc></div><div class=l>扫码点歌</div></div></div><div id=sd><div class=h><span class=lg>🎤 队列</span><span class=c id=qc2>0</span></div>
 <div id=ct><button class=bv id=bw onclick=tv()>🎵 原唱</button><button class=bs onclick=os()>🔍 搜歌</button><button class=bk onclick=sk()>⏭ 跳过</button></div>
 <div id=ql></div></div></div><div id=sr onclick="if(event.target===this)cs()"><div id=sp><div class=sh><input id=si placeholder="搜歌名/歌手/拼音…" oninput=ds(this.value)><button class=x onclick=cs()>✕</button></div>
@@ -40,6 +45,9 @@
 <script>
 var B=location.origin,h=null,c=null,v='o',p=null,st=null,vd=document.getElementById('v')
 new QRCode(document.getElementById('qc'),{text:B+'/m',width:100,height:100,colorDark:'#000',correctLevel:QRCode.CorrectLevel.L})
+function seek(e){var r=e.target.getBoundingClientRect(),p=(e.clientX-r.left)/r.width;vd.currentTime=p*vd.duration}
+function fmt(t){t=t||0;var m=Math.floor(t/60),s=Math.floor(t%60);return(m<10?'0':'')+m+':'+(s<10?'0':'')+s}
+setInterval(function(){if(vd.duration){var p=vd.currentTime/vd.duration*100;document.getElementById('seekfill').style.width=p+'%';document.getElementById('seetime').textContent=fmt(vd.currentTime)+'/'+fmt(vd.duration)}},500)
 function ps(i){c=i;document.getElementById('ld').classList.remove('h');document.getElementById('idle').classList.add('h');document.getElementById('info').classList.add('s')
 if(h){h.destroy();h=null}var u=B+'/api/stream/'+i+'?mode='+v
 if(Hls.isSupported()){h=new Hls();h.loadSource(u);h.attachMedia(vd);h.on(Hls.Events.MANIFEST_PARSED,function(){document.getElementById('ld').classList.add('h');vd.play().catch(function(){})
