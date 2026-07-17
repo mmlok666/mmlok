@@ -8,8 +8,6 @@
 
 import os, sys, json, sqlite3, subprocess, shutil, threading, time, socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from socketserver import ThreadingMixIn
-class ThreadingServer(ThreadingMixIn, HTTPServer): pass
 from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import Path
 from datetime import datetime
@@ -47,6 +45,7 @@ def get_db():
     return db
 
 def search_songs(query):
+    """搜索歌曲，支持歌名/歌手/拼音"""
     db = get_db()
     if not db: return []
     try:
@@ -54,19 +53,16 @@ def search_songs(query):
             rows = db.execute("SELECT * FROM song ORDER BY id LIMIT 50").fetchall()
         else:
             q = f"%{query.strip()}%"
-            rows = db.execute("SELECT * FROM song WHERE name LIKE ? OR singer_names LIKE ? OR acronym LIKE ? ORDER BY id LIMIT 200", (q, q, q)).fetchall()
+            rows = db.execute(
+                "SELECT * FROM song WHERE song_name LIKE ? OR singer LIKE ? OR pinyin LIKE ? OR id LIKE ? ORDER BY id LIMIT 100",
+                (q, q, q, q)
+            ).fetchall()
         db.close()
-        # 只返回本地有视频文件的歌曲
-        results = []
-        for r in rows:
-            d = dict(r)
-            fn = str(d.get("number", d["id"]))
-            if fn in local_files:
-                results.append(d)
-        return results
+        return [dict(r) for r in rows]
     except Exception as e:
         print(f"搜索错误: {e}")
-        db.close(); return []
+        db.close()
+        return []
 
 def get_song(song_id):
     """根据ID获取歌曲"""
@@ -81,44 +77,20 @@ def get_song(song_id):
         return None
 
 # ======================== 文件查找 ========================
-# 扫描本地视频文件 {编号: 完整路径}
-local_files = {}
-def scan_local_files():
+def find_song_file(file_number):
+    """查找歌曲MKV文件"""
     ktv = str(KTV_DIR)
-    if not os.path.isdir(ktv): return
-    count = 0
-    for d in os.listdir(ktv):
-        sub = os.path.join(ktv, d)
-        if not os.path.isdir(sub) or not d.startswith('song'): continue
-        for f in os.listdir(sub):
-            fp = os.path.join(sub, f)
-            if os.path.isfile(fp) and f.isdigit():
-                local_files[f] = fp
-                count += 1
-    print(f"📹 本地视频: {count} 个文件，搜歌只显示本地有的歌")
-
-def wait_for_file(fp, timeout=60):
-    """Wait for a file to appear with longer timeout"""
-    for _ in range(timeout * 10):
-        if os.path.exists(fp):
-            size = os.path.getsize(fp)
-            if size > 0: return True
-        time.sleep(0.1)
-    return False
-
-def find_song_file(fn):
-    """根据文件编号查找视频文件"""
-    fp = local_files.get(str(fn))
-    if fp: return fp
-    ktv = str(KTV_DIR)
-    if os.path.isdir(ktv):
-        for d in os.listdir(ktv):
-            sub = os.path.join(ktv, d)
-            if os.path.isdir(sub) and d.startswith('song'):
-                fp2 = os.path.join(sub, str(fn))
-                if os.path.exists(fp2):
-                    local_files[str(fn)] = fp2
-                    return fp2
+    names = [f"song{file_number}.mkv", f"song{file_number}.mp4",
+             f"song{str(file_number).zfill(4)}.mkv", f"song{str(file_number).zfill(4)}.mp4"]
+    for n in names:
+        p = os.path.join(ktv, n)
+        if os.path.exists(p): return p
+    # 子目录
+    for base in range(0, 4500, 500):
+        sub = f"song{base}"
+        for n in names:
+            p = os.path.join(ktv, sub, n)
+            if os.path.exists(p): return p
     return None
 
 # ======================== HLS 转码 ========================
@@ -127,76 +99,39 @@ def get_hls_dir(song_id):
 
 def is_hls_ready(song_id):
     d = get_hls_dir(song_id)
-    return False
+    return d.exists() and (d / "master.m3u8").exists() and (d / "stream.m3u8").exists()
 
-def generate_hls(sid, fp):
-    """Generate HLS with audio track detection and fallback"""
-    hls_dir = get_hls_dir(sid)
+def generate_hls(song_id, filepath):
+    """用ffmpeg生成HLS，包含两个音频轨道"""
+    hls_dir = get_hls_dir(song_id)
     hls_dir.mkdir(parents=True, exist_ok=True)
-    # Remove old cache for this song
-    for f in os.listdir(hls_dir): 
-        fp2 = os.path.join(hls_dir, f)
-        if os.path.isfile(fp2): os.remove(fp2)
-    seg_v = str(hls_dir / "video_%04d.ts")
-    pl_v = str(hls_dir / "video.m3u8")
-    pl_a0 = str(hls_dir / "audio0.m3u8")
-    pl_a1 = str(hls_dir / "audio1.m3u8")
-    
-    # Probe audio tracks (like junyao-ktv)
-    audio_tracks = 0
-    try:
-        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", fp], capture_output=True, text=True, timeout=30)
-        lines = [l for l in r.stdout.strip().split(chr(10)) if l.strip()]
-        audio_tracks = len(lines)
-    except: pass
-    if audio_tracks == 0:
-        # Try with different selector
-        try:
-            r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", fp], capture_output=True, text=True, timeout=30)
-            audio_tracks = r.stdout.count("audio")
-        except: pass
-    print(f"  Audio tracks: {audio_tracks}")
-    
-    # Video track
-    cmd_v = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:v:0", "-an", "-c:v", "copy", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_v, pl_v]
-    
-    # Audio 0: original track
-    seg_a0 = str(hls_dir / "audio0_%04d.ts")
-    cmd_a0 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:0", "-vn", "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_a0, pl_a0]
-    
-    # Audio 1: use track 1 if available, else use left channel from track 0
-    seg_a1 = str(hls_dir / "audio1_%04d.ts")
-    if audio_tracks >= 2:
-        cmd_a1 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:1", "-vn", "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_a1, pl_a1]
-    else:
-        # Extract left channel (accompaniment) from stereo track 0
-        cmd_a1 = ["ffmpeg", "-loglevel", "error", "-y", "-i", fp, "-map", "0:a:0", "-vn", "-af", "pan=mono|c0=FL", "-c:a", "aac", "-b:a", "128k", "-ac", "1", "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "event", "-hls_flags", "independent_segments", "-hls_segment_filename", seg_a1, pl_a1]
-    
-    # Write master.m3u8 immediately
-    NL = chr(10)
-    prefix = "/api/stream/" + str(sid)
-    master = NL.join(["#EXTM3U", "#EXT-X-VERSION:6",
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"" + prefix + "/audio0.m3u8\"",
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u4f34\u5531\",DEFAULT=NO,AUTOSELECT=NO,URI=\"" + prefix + "/audio1.m3u8\"",
-        "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO=\"aud\"", prefix + "/video.m3u8", ""])
-    (hls_dir / "master.m3u8").write_text(master, 'utf-8')
-    
-    def transcode():
-        procs = [subprocess.Popen(cmd_v, stderr=subprocess.PIPE),
-                 subprocess.Popen(cmd_a0, stderr=subprocess.PIPE),
-                 subprocess.Popen(cmd_a1, stderr=subprocess.PIPE)]
-        errors = []
-        for i, p in enumerate(procs):
-            _, err = p.communicate()
-            if p.returncode != 0:
-                err_text = err.decode('utf-8', errors='replace')[:200] if err else ''
-                errors.append(f"Process {i} failed: {err_text}")
-        if errors:
-            print(f"  Warnings for song {sid}: {'; '.join(errors)}")
-        else:
-            print(f"  Done: song {sid}")
-    threading.Thread(target=transcode, daemon=True).start()
-    return True
+    output = str(hls_dir / "stream.m3u8")
+    master = str(hls_dir / "master.m3u8")
+    seg = str(hls_dir / "seg_%03d.ts")
+
+    cmd = [
+        "ffmpeg", "-i", filepath,
+        "-map", "0:v:0", "-c:v", "copy",
+        "-map", "0:a:0", "-c:a:0", "aac", "-b:a:0", "128k", "-ac:a:0", "2",
+        "-map", "0:a:1", "-c:a:1", "aac", "-b:a:1", "128k", "-ac:a:1", "2",
+        "-f", "hls",
+        "-hls_time", "10",
+        "-hls_list_size", "0",
+        "-hls_segment_filename", seg,
+        "-master_pl_name", "master.m3u8",
+        "-var_stream_map", "v:0,a:0 a:1",
+        "-loglevel", "error",
+        output
+    ]
+
+    print(f"  🔄 ffmpeg 转码: 歌曲ID={song_id}")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg 失败 (code={result.returncode}): {result.stderr[:200]}")
+
+    # 读取并修正 master.m3u8
+    fix_master(master, song_id)
+    print(f"  ✅ 转码完成: 歌曲ID={song_id}")
 
 def fix_master(master_path, song_id):
     """修正 master.m3u8 确保 hls.js 能正确识别音频轨道"""
@@ -237,8 +172,8 @@ def add_to_queue(song_id, nickname="手机点歌"):
         entry = {
             "id": queue_counter,
             "song_id": song_id,
-            "title": song.get("name", "未知") if song else "未知",
-            "artist": song.get("singer_names", "未知歌手") if song else "未知歌手",
+            "title": song.get("song_name", "未知") if song else "未知",
+            "artist": song.get("singer", "未知歌手") if song else "未知歌手",
             "nickname": nickname,
             "status": "waiting",
             "time": time.time()
@@ -383,9 +318,9 @@ class KTVHandler(BaseHTTPRequestHandler):
             results = search_songs(q)
             data = [{
                 "id": r["id"],
-                "title": r.get("name", "未知"),
-                "artist": r.get("singer_names", "未知歌手"),
-                "pinyin": r.get("acronym", ""),
+                "title": r.get("song_name", "未知"),
+                "artist": r.get("singer", "未知歌手"),
+                "pinyin": r.get("pinyin", ""),
                 "edition": r.get("edition", "")
             } for r in results]
             self._send_json(data)
@@ -396,9 +331,9 @@ class KTVHandler(BaseHTTPRequestHandler):
             if song:
                 self._send_json({
                     "id": song["id"],
-                    "title": song.get("name", "未知"),
-                    "artist": song.get("singer_names", "未知歌手"),
-                    "pinyin": song.get("acronym", ""),
+                    "title": song.get("song_name", "未知"),
+                    "artist": song.get("singer", "未知歌手"),
+                    "pinyin": song.get("pinyin", ""),
                     "file_number": song.get("number", song["id"])
                 })
             else:
