@@ -8,6 +8,8 @@
 
 import os, sys, json, sqlite3, subprocess, shutil, threading, time, socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
+class ThreadingServer(ThreadingMixIn, HTTPServer): pass
 from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import Path
 from datetime import datetime
@@ -88,10 +90,12 @@ def scan_local_files():
                 count += 1
     print(f"📹 本地视频: {count} 个文件")
 
-def wait_for_file(fp, timeout=30):
-    """Wait for a file to appear (HLS segments are generated asynchronously)"""
+def wait_for_file(fp, timeout=60):
+    """Wait for a file to appear with longer timeout"""
     for _ in range(timeout * 10):
-        if os.path.exists(fp): return True
+        if os.path.exists(fp):
+            size = os.path.getsize(fp)
+            if size > 0: return True
         time.sleep(0.1)
     return False
 
@@ -131,12 +135,19 @@ def generate_hls(sid, fp):
     pl_a0 = str(hls_dir / "audio0.m3u8")
     pl_a1 = str(hls_dir / "audio1.m3u8")
     
-    # Probe audio tracks
+    # Probe audio tracks (like junyao-ktv)
     audio_tracks = 0
     try:
         r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", fp], capture_output=True, text=True, timeout=30)
-        audio_tracks = len(r.stdout.strip().split(chr(10))) if r.stdout.strip() else 0
+        lines = [l for l in r.stdout.strip().split(chr(10)) if l.strip()]
+        audio_tracks = len(lines)
     except: pass
+    if audio_tracks == 0:
+        # Try with different selector
+        try:
+            r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", fp], capture_output=True, text=True, timeout=30)
+            audio_tracks = r.stdout.count("audio")
+        except: pass
     print(f"  Audio tracks: {audio_tracks}")
     
     # Video track
@@ -167,8 +178,16 @@ def generate_hls(sid, fp):
         procs = [subprocess.Popen(cmd_v, stderr=subprocess.PIPE),
                  subprocess.Popen(cmd_a0, stderr=subprocess.PIPE),
                  subprocess.Popen(cmd_a1, stderr=subprocess.PIPE)]
-        for p in procs: p.wait()
-        print(f"  Done: song {sid}")
+        errors = []
+        for i, p in enumerate(procs):
+            _, err = p.communicate()
+            if p.returncode != 0:
+                err_text = err.decode('utf-8', errors='replace')[:200] if err else ''
+                errors.append(f"Process {i} failed: {err_text}")
+        if errors:
+            print(f"  Warnings for song {sid}: {'; '.join(errors)}")
+        else:
+            print(f"  Done: song {sid}")
     threading.Thread(target=transcode, daemon=True).start()
     return True
 
