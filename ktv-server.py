@@ -134,7 +134,7 @@ def generate_hls(sid, fp):
     prefix = "/api/stream/" + str(sid)
     master = NL.join([
         "#EXTM3U", "#EXT-X-VERSION:6",
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"\"" + prefix + "/audio0.m3u8\"",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u539f\u5531\",DEFAULT=YES,AUTOSELECT=YES,URI=\"" + prefix + "/audio0.m3u8\"",
         "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"\u4f34\u5531\",DEFAULT=NO,AUTOSELECT=NO,URI=\"\"" + prefix + "/audio1.m3u8\"",
         "#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO=\"aud\"",
         prefix + "/video.m3u8", ""
