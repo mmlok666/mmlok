@@ -54,9 +54,16 @@ def search_songs(query):
             rows = db.execute("SELECT * FROM song ORDER BY id LIMIT 50").fetchall()
         else:
             q = f"%{query.strip()}%"
-            rows = db.execute("SELECT * FROM song WHERE name LIKE ? OR singer_names LIKE ? OR acronym LIKE ? OR id LIKE ? ORDER BY id LIMIT 100", (q, q, q, q)).fetchall()
+            rows = db.execute("SELECT * FROM song WHERE name LIKE ? OR singer_names LIKE ? OR acronym LIKE ? ORDER BY id LIMIT 200", (q, q, q)).fetchall()
         db.close()
-        return [dict(r) for r in rows]
+        # 只返回本地有视频文件的歌曲
+        results = []
+        for r in rows:
+            d = dict(r)
+            fn = str(d.get("number", d["id"]))
+            if fn in local_files:
+                results.append(d)
+        return results
     except Exception as e:
         print(f"搜索错误: {e}")
         db.close(); return []
@@ -88,7 +95,7 @@ def scan_local_files():
             if os.path.isfile(fp) and f.isdigit():
                 local_files[f] = fp
                 count += 1
-    print(f"📹 本地视频: {count} 个文件")
+    print(f"📹 本地视频: {count} 个文件，搜歌只显示本地有的歌")
 
 def wait_for_file(fp, timeout=60):
     """Wait for a file to appear with longer timeout"""
