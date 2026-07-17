@@ -54,7 +54,7 @@ def search_songs(query):
         else:
             q = f"%{query.strip()}%"
             rows = db.execute(
-                "SELECT * FROM song WHERE name LIKE ? OR singer LIKE ? OR pinyin LIKE ? OR id LIKE ? ORDER BY id LIMIT 100",
+                "SELECT * FROM song WHERE name LIKE ? OR singer_names LIKE ? OR acronym LIKE ? OR id LIKE ? ORDER BY id LIMIT 100",
                 (q, q, q, q)
             ).fetchall()
         db.close()
