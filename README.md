@@ -1,39 +1,25 @@
-# 🎤 家庭KTV点歌系统
+# 家庭KTV点歌系统
 
-纯 Python 实现，零依赖，双击启动。
+**推荐使用 junyao-ktv**，功能完整、兼容性好。
+
+## 启动方式
+
+1. 打开 WSL（Ubuntu）
+2. 运行：
+```bash
+cd ~/junyao-ktv/app/docker/server
+DATA_DIR=/home/riliang/junyao-ktv-data MV_DIR=/mnt/c/KTV node index.js
+```
+
+3. 浏览器打开：
+   - 电视端: http://localhost:8080/tv
+   - 手机点歌: http://localhost:8080/m
+   - 管理后台: http://localhost:8080/admin
 
 ## 功能
-
-- 📺 **电视端** - 全屏播放，队列管理，搜歌点歌
-- 📱 **手机点歌** - 搜歌、点歌、队列管理
-- 🔄 **原唱/伴唱切换** - 基于 MKV 音轨，hls.js 实时切换
-- 🔍 **搜歌** - 支持歌名、歌手、拼音搜索
-
-## 前提条件
-
-| 软件 | 说明 |
-|------|------|
-| Python 3 | pip install 不需要，只用标准库 |
-| ffmpeg | 已加入 PATH |
-| 歌曲文件 | H:\KTVSong\song0~4002 的 MKV |
-| 曲库数据库 | H:\KTVSong\song_V3.2.3.db |
-
-## 启动
-
-**双击 `start.bat`** 即可。
-
-- 电视端: `http://localhost:3456/tv`
-- 手机点歌: `http://<你的IP>:3456/m`
-
-## 键盘快捷键（电视端）
-
-| 按键 | 功能 |
-|------|------|
-| V | 切换原唱/伴唱 |
-| S | 打开搜索 |
-| Esc | 关闭搜索 |
-| 空格/K | 播放/暂停 |
-
-## 原理
-
-Python 标准库 HTTP 服务器 + ffmpeg HLS 转码 + hls.js 音轨切换，不需要装任何第三方包。
+- 电视端全屏播放
+- 手机扫码点歌
+- 原唱/伴唱切换
+- 歌曲搜索
+- 队列管理
+- 曲库管理
