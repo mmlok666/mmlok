@@ -45,7 +45,6 @@ def get_db():
     return db
 
 def search_songs(query):
-    """搜索歌曲，支持歌名/歌手/拼音"""
     db = get_db()
     if not db: return []
     try:
@@ -53,16 +52,18 @@ def search_songs(query):
             rows = db.execute("SELECT * FROM song ORDER BY id LIMIT 50").fetchall()
         else:
             q = f"%{query.strip()}%"
-            rows = db.execute(
-                "SELECT * FROM song WHERE song_name LIKE ? OR singer LIKE ? OR pinyin LIKE ? OR id LIKE ? ORDER BY id LIMIT 100",
-                (q, q, q, q)
-            ).fetchall()
+            rows = db.execute("SELECT * FROM song WHERE name LIKE ? OR singer_names LIKE ? OR acronym LIKE ? ORDER BY id LIMIT 200", (q, q, q)).fetchall()
         db.close()
-        return [dict(r) for r in rows]
+        results = []
+        for r in rows:
+            d = dict(r)
+            fn = str(d.get("number", d["id"]))
+            if fn in local_files:
+                results.append(d)
+        return results
     except Exception as e:
         print(f"搜索错误: {e}")
-        db.close()
-        return []
+        db.close(); return []
 
 def get_song(song_id):
     """根据ID获取歌曲"""
@@ -77,20 +78,35 @@ def get_song(song_id):
         return None
 
 # ======================== 文件查找 ========================
-def find_song_file(file_number):
-    """查找歌曲MKV文件"""
+# 扫描本地视频文件 {编号: 完整路径}
+local_files = {}
+def scan_local_files():
     ktv = str(KTV_DIR)
-    names = [f"song{file_number}.mkv", f"song{file_number}.mp4",
-             f"song{str(file_number).zfill(4)}.mkv", f"song{str(file_number).zfill(4)}.mp4"]
-    for n in names:
-        p = os.path.join(ktv, n)
-        if os.path.exists(p): return p
-    # 子目录
-    for base in range(0, 4500, 500):
-        sub = f"song{base}"
-        for n in names:
-            p = os.path.join(ktv, sub, n)
-            if os.path.exists(p): return p
+    if not os.path.isdir(ktv): return
+    count = 0
+    for d in os.listdir(ktv):
+        sub = os.path.join(ktv, d)
+        if not os.path.isdir(sub) or not d.startswith('song'): continue
+        for f in os.listdir(sub):
+            fp = os.path.join(sub, f)
+            if os.path.isfile(fp) and f.isdigit():
+                local_files[f] = fp
+                count += 1
+    print(f"📹 本地视频: {count} 个文件，搜歌只显示本地有的歌")
+
+def find_song_file(fn):
+    """根据文件编号查找视频文件"""
+    fp = local_files.get(str(fn))
+    if fp: return fp
+    ktv = str(KTV_DIR)
+    if os.path.isdir(ktv):
+        for d in os.listdir(ktv):
+            sub = os.path.join(ktv, d)
+            if os.path.isdir(sub) and d.startswith('song'):
+                fp2 = os.path.join(sub, str(fn))
+                if os.path.exists(fp2):
+                    local_files[str(fn)] = fp2
+                    return fp2
     return None
 
 # ======================== HLS 转码 ========================
@@ -172,8 +188,8 @@ def add_to_queue(song_id, nickname="手机点歌"):
         entry = {
             "id": queue_counter,
             "song_id": song_id,
-            "title": song.get("song_name", "未知") if song else "未知",
-            "artist": song.get("singer", "未知歌手") if song else "未知歌手",
+            "title": song.get("name", "未知") if song else "未知",
+            "artist": song.get("singer_names", "未知歌手") if song else "未知歌手",
             "nickname": nickname,
             "status": "waiting",
             "time": time.time()
@@ -318,8 +334,8 @@ class KTVHandler(BaseHTTPRequestHandler):
             results = search_songs(q)
             data = [{
                 "id": r["id"],
-                "title": r.get("song_name", "未知"),
-                "artist": r.get("singer", "未知歌手"),
+                "title": r.get("name", "未知"),
+                "artist": r.get("singer_names", "未知歌手"),
                 "pinyin": r.get("pinyin", ""),
                 "edition": r.get("edition", "")
             } for r in results]
@@ -331,8 +347,8 @@ class KTVHandler(BaseHTTPRequestHandler):
             if song:
                 self._send_json({
                     "id": song["id"],
-                    "title": song.get("song_name", "未知"),
-                    "artist": song.get("singer", "未知歌手"),
+                    "title": song.get("name", "未知"),
+                    "artist": song.get("singer_names", "未知歌手"),
                     "pinyin": song.get("pinyin", ""),
                     "file_number": song.get("number", song["id"])
                 })
@@ -471,6 +487,7 @@ def get_lan_ip():
 def main():
     # 创建缓存目录
     HLS_CACHE.mkdir(parents=True, exist_ok=True)
+    scan_local_files()
 
     # 检查条件
     if not DB_PATH.exists():
