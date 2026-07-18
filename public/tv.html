@@ -5,8 +5,8 @@
 *{margin:0;padding:0;box-sizing:border-box}body{background:#000;color:#fff;font-family:'Microsoft YaHei',sans-serif;overflow:hidden;height:100vh}
 #app{display:flex;height:100vh}#va{flex:1;position:relative;background:#000}#va video{width:100%;height:100%;object-fit:contain}
 #ld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.8);z-index:2;transition:opacity .5s}#ld.h{opacity:0;pointer-events:none}
-.sp{width:50px;height:50px;border:4px solid rgba(255,255,255,.1);border-top-color:#7c2cf7;border-radius:50%;animation:spin .8s linear infinite}
-#idle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0d0d2b,#1a1a3e);z-index:1}#idle.h{opacity:0;pointer-events:none}
+.sp{width:50px;height:50px;border:4px solid rgba(255,255,255,.1);border-top-color:#7c2cf7;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+#idle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0d0d2b,#1a1a3e);z-index:1;transition:opacity .5s}#idle.h{opacity:0;pointer-events:none}
 #idle h1{font-size:64px;background:linear-gradient(135deg,#7c2cf7,#36d9f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 #info{position:absolute;left:0;right:0;bottom:0;padding:16px;background:linear-gradient(0,rgba(0,0,0,.9),transparent);z-index:3;display:none}#info.s{display:block}
 #info .t{font-size:28px;font-weight:700}#info .m{font-size:16px;color:rgba(255,255,255,.6)}
@@ -31,46 +31,171 @@
 #sp .sb{flex:1;overflow-y:auto;padding:8px}.si{display:flex;align-items:center;padding:10px 14px;border-radius:10px;margin-bottom:4px;background:rgba(255,255,255,.03)}
 .si .i{flex:1;min-width:0}.si .i .t{font-size:15px;font-weight:600}.si .i .m{font-size:13px;color:rgba(255,255,255,.4);margin-top:2px}
 .si .a{padding:6px 16px;border:none;background:linear-gradient(135deg,#7c2cf7,#36d9f7);color:#fff;border-radius:8px;font-size:14px;cursor:pointer}
-#sbar{position:absolute;bottom:0;left:0;right:0;z-index:10;padding:4px 12px;background:rgba(0,0,0,.5);display:none;align-items:center;gap:8px}
-#sbar.s{display:flex}#sbar:hover{opacity:1}#st{flex:1;height:5px;background:rgba(255,255,255,.2);border-radius:3px;cursor:pointer}
+#sbar{position:absolute;bottom:0;left:0;right:0;z-index:10;padding:4px 12px;background:rgba(0,0,0,.5);display:none;align-items:center;gap:8px;cursor:pointer}
+#sbar.s{display:flex}#st{flex:1;height:5px;background:rgba(255,255,255,.2);border-radius:3px;position:relative}
 #sf{height:100%;background:linear-gradient(90deg,#7c2cf7,#36d9f7);border-radius:3px;width:0%}
 #stm{font-size:12px;color:rgba(255,255,255,.6);min-width:80px;text-align:right}
+#umbtn{position:absolute;bottom:120px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(124,44,247,.8);color:#fff;padding:12px 28px;border-radius:24px;font-size:18px;cursor:pointer;display:none}
 </style>
 <body><div id=app><div id=va><video id=v playsinline autoplay muted></video>
 <div id=ld><div class=sp></div></div>
-<div id=idle><h1>🎤 KTV</h1></div><div id=umbtn onclick="um=1;localStorage.setItem('um','1');vd.muted=false;document.getElementById('umbtn').style.display='none'" style="position:absolute;bottom:120px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(124,44,247,.8);color:#fff;padding:12px 28px;border-radius:24px;font-size:18px;cursor:pointer;display:none">🔊 点击取消静音</div>
+<div id=idle class=h><h1>🎤 KTV</h1></div>
 <div id=info><div class=t id=nt>—</div><div class=m id=nm>—</div></div><div id=vb></div>
 <div id=qr><div id=qc></div><div class=l>扫码点歌</div></div>
-<div id=sbar><div id=st onclick="seek(event)"><div id=sf></div></div><div id=stm></div></div>
+<div id=umbtn>🔊 点击取消静音</div>
+<div id=sbar><div id=st><div id=sf></div></div><div id=stm></div></div>
 </div><div id=sd><div class=h><span class=lg>🎤 队列</span><span class=c id=qc2>0</span></div>
-<div id=ct><button class=bv id=bw onclick=tv()>🎵 原唱</button><button class=bs onclick=os()>🔍 搜歌</button><button class=bk onclick=sk()>⏭ 跳过</button></div>
+<div id=ct><button class=bv id=bw>🎵 原唱</button><button class=bs>🔍 搜歌</button><button class=bk>⏭ 跳过</button></div>
 <div id=ql></div></div></div>
-<div id=sr onclick="if(event.target===this)cs()"><div id=sp><div class=sh><input id=si placeholder="搜歌名/歌手/拼音…" oninput=ds(this.value)><button class=x onclick=cs()>✕</button></div>
+<div id=sr><div id=sp><div class=sh><input id=si placeholder="搜歌名/歌手/拼音…"><button class=x>✕</button></div>
 <div class=sb id=sr2></div></div></div>
 <script>
-var B=location.origin,h=null,c=null,v='o',p=null,st=null,vd=document.getElementById('v'),um=localStorage.getItem('um')
-new QRCode(document.getElementById('qc'),{text:B+'/m',width:100,height:100,colorDark:'#000',correctLevel:QRCode.CorrectLevel.L})
-function ps(i){c=i;document.getElementById('ld').classList.remove('h');document.getElementById('idle').classList.add('h');document.getElementById('info').classList.add('s')
-if(h){h.destroy();h=null}vd.removeAttribute('src');vd.load();vd.currentTime=0
-var u=B+'/api/stream/'+i;h=new Hls({startPosition:0,debug:false});h.loadSource(u);h.attachMedia(vd)
-h.on(Hls.Events.MANIFEST_PARSED,function(){vd.currentTime=0;vd.muted=true;document.getElementById("umbtn").style.display="block"document.getElementById('ld').classList.add('h');vd.play().catch(function(){});vd.onended=function(){fetch(B+"/api/playback/ended",{method:"POST"}).then(function(){setTimeout(function(){fetch(B+"/api/now-playing").then(function(r){return r.json()}).then(function(d){if(d)ps(d.song_id);else{document.getElementById("idle").classList.remove("h");document.getElementById("info").classList.remove("s")}})},500)})}})
-fetch(B+'/api/songs/'+i).then(function(r){return r.json()}).then(function(s){document.getElementById('nt').textContent=s.title;document.getElementById('nm').textContent=s.artist}).catch(function(){})
-fetch(B+'/api/voice/status/'+i).then(function(r){return r.json()}).then(function(d){v=d.mode;uv()}).catch(function(){})}
-function tv(){if(!c)return;v=v==='o'?'a':'o';uv();if(h&&h.audioTracks&&h.audioTracks.length>1)h.audioTrack=v==='o'?0:1;fetch(B+'/api/voice/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:c,mode:v==='o'?'original':'accompaniment'})}).catch(function(){})}
-function uv(){var b=document.getElementById('bw'),bg=document.getElementById('vb');if(v==='o'){b.textContent='🎵 原唱';b.classList.remove('a');bg.textContent='🎵 原唱'}else{b.textContent='🎵 伴唱';b.classList.add('a');bg.textContent='🎵 伴唱'}bg.classList.add('s')}
-function lq(){fetch(B+'/api/queue').then(function(r){return r.json()}).then(function(q){document.getElementById('qc2').textContent=q.length+'首'
-var el=document.getElementById('ql');if(!q.length){el.innerHTML='<div id=ep>🎵 暂无点歌</div>';return}
-el.innerHTML=q.map(function(e,i){var p=e.status==='playing';return'<div class="qi'+(p?' p':'')+'"><div class="n">'+(p?'♪':(i+1))+'</div><div class="i"><div class="t">'+e.title+'</div><div class="m">'+e.artist+' · '+e.nickname+(p?' <span style="color:#7c2cf7">播放中</span>':'')+'</div></div>'+(p?'':'<button class="d" onclick="rq('+e.queue_id+')">✕</button>')+'</div>'}).join('')})}
-function rq(i){fetch(B+'/api/queue/'+i,{method:'DELETE'}).then(lq)}
-function sk(){fetch(B+'/api/playback/ended',{method:'POST'}).then(function(){setTimeout(function(){fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){if(d)ps(d.song_id);else{document.getElementById('idle').classList.remove('h');document.getElementById('info').classList.remove('s')}})},500)})}
-function os(){document.getElementById('sr').classList.add('s');document.getElementById('si').value='';document.getElementById('si').focus();document.getElementById('sr2').innerHTML=''}
-function cs(){document.getElementById('sr').classList.remove('s')}
-function ds(q){clearTimeout(st);if(!q.trim()){document.getElementById('sr2').innerHTML='';return}
-st=setTimeout(function(){fetch(B+'/api/songs?q='+encodeURIComponent(q)).then(function(r){return r.json()}).then(function(s){var el=document.getElementById('sr2');if(!s.length){el.innerHTML='<div style="text-align:center;padding:30px;color:rgba(255,255,255,.3)">未找到</div>';return}
-el.innerHTML=s.map(function(s){return'<div class="si"><div class="i"><div class="t">'+s.title+'</div><div class="m">'+s.artist+'</div></div><button class="a" onclick="aq('+s.id+')">点歌</button></div>'}).join('')})},300)}
-function aq(i){fetch(B+'/api/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:i,nickname:'电视端'})}).then(function(){lq();cs()})}
-function seek(e){var r=e.target.getBoundingClientRect(),p=(e.clientX-r.left)/r.width,d=vd.duration;if(d&&isFinite(d)){vd.currentTime=p*d;if(!um){um=1;localStorage.setItem('um','1');vd.muted=false}}}
-function sp(){lq();fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){if(d&&d.song_id!==c)ps(d.song_id)})
-p=setInterval(function(){lq();fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){if(d&&d.song_id!==c)ps(d.song_id);else if(!d&&c){c=null;document.getElementById('idle').classList.remove('h');document.getElementById('info').classList.remove('s');document.getElementById('ld').classList.add('h')}});if(vd.duration){document.getElementById('sf').style.width=(vd.currentTime/vd.duration*100)+'%';document.getElementById('stm').textContent=Math.floor(vd.currentTime/60)+':'+Math.floor(vd.currentTime%60)+'/'+Math.floor(vd.duration/60)+':'+Math.floor(vd.duration%60);document.getElementById('sbar').classList.add('s')}},3000)}
-document.addEventListener('keydown',function(e){if(e.key==='v')tv();if(e.key==='s')os();if(e.key==='Escape')cs();if(e.key===' '||e.key==='k'){e.preventDefault();if(vd.paused)vd.play();else vd.pause()}})
-sp()</script>
+var B=location.origin,h=null,c=null,v='o',p=null,st=null,vd=document.getElementById('v');
+var um=localStorage.getItem('um');
+new QRCode(document.getElementById('qc'),{text:B+'/m',width:100,height:100,colorDark:'#000',correctLevel:QRCode.CorrectLevel.L});
+
+function ps(i){
+  c=i;
+  document.getElementById('ld').classList.remove('h');
+  document.getElementById('idle').classList.add('h');
+  document.getElementById('info').classList.add('s');
+  if(h){h.destroy();h=null}
+  vd.removeAttribute('src');vd.load();vd.currentTime=0;
+  var u=B+'/api/stream/'+i;
+  h=new Hls({startPosition:0,debug:false});
+  h.loadSource(u);h.attachMedia(vd);
+  h.on(Hls.Events.MANIFEST_PARSED,function(){
+    vd.currentTime=0;vd.muted=true;
+    document.getElementById('ld').classList.add('h');
+    vd.play().catch(function(){});
+    if(!um){
+      document.getElementById('umbtn').style.display='block';
+    }
+  });
+  fetch(B+'/api/songs/'+i).then(function(r){return r.json()}).then(function(s){
+    document.getElementById('nt').textContent=s.title;
+    document.getElementById('nm').textContent=s.artist;
+  }).catch(function(){});
+  fetch(B+'/api/voice/status/'+i).then(function(r){return r.json()}).then(function(d){
+    v=d.mode;uv();
+  }).catch(function(){});
+  vd.onended=function(){
+    fetch(B+'/api/playback/ended',{method:'POST'}).then(function(){
+      setTimeout(function(){
+        fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){
+          if(d)ps(d.song_id);
+          else{document.getElementById('idle').classList.remove('h');document.getElementById('info').classList.remove('s')}
+        });
+      },500);
+    });
+  };
+}
+
+function tv(){
+  if(!c)return;
+  v=v==='o'?'a':'o';uv();
+  if(h&&h.audioTracks&&h.audioTracks.length>1)h.audioTrack=v==='o'?0:1;
+  fetch(B+'/api/voice/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:c,mode:v==='o'?'original':'accompaniment'})}).catch(function(){});
+}
+
+function uv(){
+  var b=document.getElementById('bw'),bg=document.getElementById('vb');
+  if(v==='o'){b.textContent='🎵 原唱';b.classList.remove('a');bg.textContent='🎵 原唱'}
+  else{b.textContent='🎵 伴唱';b.classList.add('a');bg.textContent='🎵 伴唱'}
+  bg.classList.add('s');
+}
+
+function lq(){
+  fetch(B+'/api/queue').then(function(r){return r.json()}).then(function(q){
+    document.getElementById('qc2').textContent=q.length+'首';
+    var el=document.getElementById('ql');
+    if(!q.length){el.innerHTML='<div id=ep>🎵 暂无点歌</div>';return}
+    el.innerHTML=q.map(function(e,i){
+      var p=e.status==='playing';
+      return'<div class="qi'+(p?' p':'')+'"><div class="n">'+(p?'♪':(i+1))+'</div><div class="i"><div class="t">'+e.title+'</div><div class="m">'+e.artist+' · '+e.nickname+(p?' <span style="color:#7c2cf7">播放中</span>':'')+'</div></div>'+(p?'':'<button class="d" onclick="rq('+e.queue_id+')">✕</button>')+'</div>';
+    }).join('');
+  });
+}
+
+function rq(i){fetch(B+'/api/queue/'+i,{method:'DELETE'}).then(lq);}
+
+function sk(){
+  fetch(B+'/api/playback/ended',{method:'POST'}).then(function(){
+    setTimeout(function(){
+      fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){
+        if(d)ps(d.song_id);
+        else{document.getElementById('idle').classList.remove('h');document.getElementById('info').classList.remove('s')}
+      });
+    },500);
+  });
+}
+
+function os(){
+  document.getElementById('sr').classList.add('s');
+  document.getElementById('si').value='';
+  document.getElementById('si').focus();
+  document.getElementById('sr2').innerHTML='';
+}
+
+function cs(){document.getElementById('sr').classList.remove('s');}
+
+function ds(q){
+  clearTimeout(st);
+  if(!q.trim()){document.getElementById('sr2').innerHTML='';return}
+  st=setTimeout(function(){
+    fetch(B+'/api/songs?q='+encodeURIComponent(q)).then(function(r){return r.json()}).then(function(s){
+      var el=document.getElementById('sr2');
+      if(!s.length){el.innerHTML='<div style="padding:30px;text-align:center;color:rgba(255,255,255,.3)">未找到</div>';return}
+      el.innerHTML=s.map(function(s){return'<div class="si"><div class="i"><div class="t">'+s.title+'</div><div class="m">'+s.artist+'</div></div><button class="a" onclick="aq('+s.id+')">点歌</button></div>';}).join('');
+    });
+  },300);
+}
+
+function aq(i){
+  fetch(B+'/api/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({song_id:i,nickname:'电视端'})}).then(function(){lq();cs();});
+}
+
+function seek(e){
+  var r=e.target.getBoundingClientRect(),p=(e.clientX-r.left)/r.width,d=vd.duration;
+  if(d&&isFinite(d)){vd.currentTime=p*d;if(!um){um=1;localStorage.setItem('um','1');vd.muted=false;document.getElementById('umbtn').style.display='none'}}
+}
+
+function sp(){
+  lq();
+  fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){
+    if(d&&d.song_id!==c)ps(d.song_id);
+  });
+  p=setInterval(function(){
+    lq();
+    fetch(B+'/api/now-playing').then(function(r){return r.json()}).then(function(d){
+      if(d&&d.song_id!==c)ps(d.song_id);
+      else if(!d&&c){c=null;document.getElementById('idle').classList.remove('h');document.getElementById('info').classList.remove('s');document.getElementById('ld').classList.add('h');}
+    });
+    if(vd.duration&&vd.duration>0){
+      document.getElementById('sf').style.width=(vd.currentTime/vd.duration*100)+'%';
+      document.getElementById('stm').textContent=Math.floor(vd.currentTime/60)+':'+Math.floor(vd.currentTime%60)+'/'+Math.floor(vd.duration/60)+':'+Math.floor(vd.duration%60);
+      document.getElementById('sbar').classList.add('s');
+    }
+  },3000);
+}
+
+document.getElementById('bw').onclick=tv;
+document.querySelector('.bs').onclick=os;
+document.querySelector('.bk').onclick=sk;
+document.querySelector('.x').onclick=cs;
+document.getElementById('si').oninput=function(){ds(this.value);};
+document.getElementById('sr').onclick=function(e){if(e.target===this)cs();};
+document.getElementById('st').onclick=seek;
+document.getElementById('umbtn').onclick=function(){
+  um=1;localStorage.setItem('um','1');vd.muted=false;
+  this.style.display='none';
+};
+document.addEventListener('keydown',function(e){
+  if(e.key==='v')tv();
+  if(e.key==='s')os();
+  if(e.key==='Escape')cs();
+  if(e.key===' '||e.key==='k'){e.preventDefault();if(vd.paused)vd.play();else vd.pause();}
+});
+
+sp();
+</script></body></html>
