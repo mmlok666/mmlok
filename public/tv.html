@@ -155,7 +155,7 @@ function aq(i){
 
 function seek(e){
   var r=e.target.getBoundingClientRect(),p=(e.clientX-r.left)/r.width,d=vd.duration;
-  if(d&&isFinite(d)){vd.currentTime=p*d;if(!um){um=1;localStorage.setItem('um','1');vd.muted=false;document.getElementById('umbtn').style.display='none'}}
+  if(d&&isFinite(d)){vd.currentTime=p*d;if(!um){um=1;vd.muted=false;document.getElementById('umbtn').style.display='none'}}
 }
 
 function sp(){
@@ -185,7 +185,7 @@ document.getElementById('si').oninput=function(){ds(this.value);};
 document.getElementById('sr').onclick=function(e){if(e.target===this)cs();};
 document.getElementById('st').onclick=seek;
 document.getElementById('umbtn').onclick=function(){
-  um=1;localStorage.setItem('um','1');vd.muted=false;
+  vd.muted=false;
   this.style.display='none';
 };
 document.addEventListener('keydown',function(e){
