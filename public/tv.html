@@ -65,10 +65,10 @@ function ps(i){
   h=new Hls({startPosition:0,debug:false});
   h.loadSource(u);h.attachMedia(vd);
   h.on(Hls.Events.MANIFEST_PARSED,function(){
-    vd.currentTime=0;vd.muted=true;
+    vd.currentTime=0;
+    if(um){vd.muted=false;}else{vd.muted=true;document.getElementById('umbtn').style.display='block';}
     document.getElementById('ld').classList.add('h');
     vd.play().catch(function(){});
-    if(!um){document.getElementById('umbtn').style.display='block';}
   });
   fetch(B+'/api/songs/'+i).then(function(r){return r.json()}).then(function(s){
     document.getElementById('nt').textContent=s.title;
