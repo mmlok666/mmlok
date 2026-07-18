@@ -51,7 +51,7 @@
 <div class=sb id=sr2></div></div></div>
 <script>
 var B=location.origin,h=null,c=null,v='o',p=null,st=null,vd=document.getElementById('v');
-var um=0;
+var um=localStorage.getItem('um');
 new QRCode(document.getElementById('qc'),{text:B+'/m',width:100,height:100,colorDark:'#000',correctLevel:QRCode.CorrectLevel.L});
 
 function ps(i){
@@ -68,7 +68,7 @@ function ps(i){
     vd.currentTime=0;vd.muted=true;
     document.getElementById('ld').classList.add('h');
     vd.play().catch(function(){});
-    document.getElementById('umbtn').style.display='block';
+    if(!um){document.getElementById('umbtn').style.display='block';}
   });
   fetch(B+'/api/songs/'+i).then(function(r){return r.json()}).then(function(s){
     document.getElementById('nt').textContent=s.title;
@@ -185,7 +185,7 @@ document.getElementById('si').oninput=function(){ds(this.value);};
 document.getElementById('sr').onclick=function(e){if(e.target===this)cs();};
 document.getElementById('st').onclick=seek;
 document.getElementById('umbtn').onclick=function(){
-  vd.muted=false;
+  um=1;localStorage.setItem('um','1');vd.muted=false;
   this.style.display='none';
 };
 document.addEventListener('keydown',function(e){
