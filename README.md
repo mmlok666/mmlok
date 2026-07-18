@@ -1,14 +1,12 @@
 # 家庭KTV点歌系统
 
-**推荐使用 junyao-ktv**，功能完整、兼容性好。
+**推荐使用，功能完整、兼容性好。
 
 ## 启动方式
 
 1. 打开 WSL（Ubuntu）
 2. 运行：
 ```bash
-cd ~/junyao-ktv/app/docker/server
-DATA_DIR=/home/riliang/junyao-ktv-data MV_DIR=/mnt/c/KTV node index.js
 ```
 
 3. 浏览器打开：
