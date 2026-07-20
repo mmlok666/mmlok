@@ -64,7 +64,7 @@ function ps(i){
   var u=B+'/api/stream/'+i;
   h=new Hls({startPosition:0,debug:false});
   h.loadSource(u);h.attachMedia(vd);
-  h.on(Hls.Events.MANIFEST_PARSED,function(){if(h.audioTracks&&h.audioTracks.length>1){h.audioTrack=1;setTimeout(function(){h.audioTrack=0},100)}
+  h.on(Hls.Events.MANIFEST_PARSED,function(){if(h.audioTracks&&h.audioTracks.length>1){setTimeout(function(){if(h.audioTracks&&h.audioTracks.length>1){h.audioTrack=1;setTimeout(function(){h.audioTrack=0},3000)}},2000)}
     vd.currentTime=0;
     if(um){vd.muted=false;}else{vd.muted=true;document.getElementById('umbtn').style.display='block';}
     document.getElementById('ld').classList.add('h');
