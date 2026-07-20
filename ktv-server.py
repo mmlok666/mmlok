@@ -30,7 +30,7 @@ def search_songs(query):
     if not db: return []
     try:
         if not query or not query.strip():
-            rows = db.execute("SELECT * FROM song ORDER BY id LIMIT 50").fetchall()
+            rows = db.execute("SELECT * FROM song ORDER BY id LIMIT 200").fetchall()
         else:
             q = f"%{query.strip()}%"
             rows = db.execute("SELECT * FROM song WHERE name LIKE ? OR singer_names LIKE ? OR acronym LIKE ? ORDER BY id LIMIT 200", (q, q, q)).fetchall()
@@ -123,14 +123,35 @@ def generate_hls(sid, fp):
         else:
             cmd_a1 = base + ["-map", "0:a:0", "-vn", "-af", "pan=mono|c0=FL", "-c:a", "aac", "-b:a", "128k", "-ac", "1"] + hls_args + ["-hls_segment_filename", seg_a1, pl_a1]
         procs = [subprocess.Popen(v, stderr=subprocess.PIPE) for v in [cmd_v, cmd_a0, cmd_a1]]
-        for p in procs: p.wait()
-        print(f"  Done: song {sid}")
+        errors = []
+        for i, p in enumerate(procs):
+            rc = p.wait()
+            if rc != 0:
+                label = ["视频", "原唱", "伴唱"][i]
+                err = p.stderr.read().decode(errors='replace')[-200:] if p.stderr else ""
+                errors.append(f"{label}: {err}")
+                print(f"  ⚠️ ffmpeg {label} 失败 (code={rc})")
+        if errors:
+            print(f"  ❌ 转码失败: song {sid}")
+            for e in errors: print(f"     {e}")
+        else:
+            print(f"  ✅ 转码完成: song {sid}")
     threading.Thread(target=transcode, daemon=True).start()
     return True
 
 def ensure_hls(sid, fp):
     if is_hls_ready(sid): return True
-    return generate_hls(sid, fp)
+    lock = hls_locks.get(sid)
+    if not lock:
+        lock = threading.Lock()
+        hls_locks[sid] = lock
+    with lock:
+        if is_hls_ready(sid): return True
+        try:
+            return generate_hls(sid, fp)
+        except Exception as e:
+            print(f"转码失败: {e}")
+            return False
 
 def add_to_queue(sid, nk="手机点歌"):
     global queue_counter; s = get_song(sid)
@@ -175,11 +196,13 @@ class H(BaseHTTPRequestHandler):
         if "/api/" in a[0]: print(f"  [{datetime.now().strftime('%H:%M:%S')}] {a[0]}")
     def _j(self, d, s=200):
         self.send_response(s); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Access-Control-Allow-Origin", "*"); self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"); self.send_header("Access-Control-Allow-Headers", "Content-Type"); self.end_headers(); self.wfile.write(json.dumps(d, ensure_ascii=False).encode())
-    def _f(self, p):
+    def _f(self, p, cc=None):
         e = os.path.splitext(p)[1].lower(); m = MIME.get(e, "application/octet-stream")
         try:
             with open(p, 'rb') as f: c = f.read()
-            self.send_response(200); self.send_header("Content-Type", m); self.send_header("Content-Length", str(len(c))); self.send_header("Access-Control-Allow-Origin", "*"); self.end_headers(); self.wfile.write(c)
+            self.send_response(200); self.send_header("Content-Type", m); self.send_header("Content-Length", str(len(c))); self.send_header("Access-Control-Allow-Origin", "*")
+            if cc: self.send_header("Cache-Control", cc)
+            self.end_headers(); self.wfile.write(c)
         except: self._j({"error": "Not found"}, 404)
     def _b(self):
         l = int(self.headers.get('Content-Length', 0)); return json.loads(self.rfile.read(l).decode()) if l > 0 else {}
@@ -205,14 +228,15 @@ class H(BaseHTTPRequestHandler):
                 fn = s.get("number", s["id"]); fp = find_song_file(fn)
                 if not fp: self._j({"error": f"文件不存在 (song{fn})"}, 404); return
                 if not ensure_hls(sid, fp): self._j({"error": "转码失败"}, 500); return
-                self._f(str(get_hls_dir(sid) / "master.m3u8"))
+                self._f(str(get_hls_dir(sid) / "master.m3u8"), "no-store")
             elif len(parts) == 5:
                 f = get_hls_dir(parts[3]) / parts[4]
                 if not str(f.resolve()).startswith(str(get_hls_dir(parts[3]).resolve())): self._j({"error": "Forbidden"}, 403); return
                 if not os.path.exists(str(f)):
                     if not wait_for_file(str(f), 60):
                         self._j({"error": "Not ready"}, 404); return
-                self._f(str(f))
+                cc = "no-store" if str(f).endswith(".m3u8") else "public, max-age=31536000, immutable"
+                self._f(str(f), cc)
             else: self._j({"error": "路径错误"}, 400)
         elif p in ("/", "/tv"): self._f(str(SCRIPT_DIR / "public" / "tv.html"))
         elif p == "/m": self._f(str(SCRIPT_DIR / "public" / "m.html"))
