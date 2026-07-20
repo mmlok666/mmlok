@@ -107,7 +107,7 @@ def generate_hls(sid, fp):
     NL = chr(10)
     master = NL.join(["#EXTM3U", "#EXT-X-VERSION:6",
         '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="原唱",DEFAULT=YES,AUTOSELECT=YES,URI="' + prefix + '/audio0.m3u8"',
-        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="伴唱",DEFAULT=NO,AUTOSELECT=NO,URI="' + prefix + '/audio1.m3u8"',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="伴唱",DEFAULT=NO,AUTOSELECT=YES,URI="' + prefix + '/audio1.m3u8"',
         '#EXT-X-STREAM-INF:BANDWIDTH=8000000,AUDIO="aud"', prefix + "/video.m3u8", ""])
     (hls_dir / "master.m3u8").write_text(master, 'utf-8')
     def transcode():
